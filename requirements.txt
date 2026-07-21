@@ -1,0 +1,23 @@
+# Elden Ring AI - Python dependencies (Python 3.12.9)
+#
+# Exact versions from the verified working environment (CUDA 12.8, RTX GPU).
+# Reproduce with:
+#
+#     python -m venv venv && source venv/bin/activate
+#     pip install -r requirements.txt
+#
+# torch is the CUDA 12.8 build and is pulled from the PyTorch index below,
+# not PyPI. If your CUDA differs, change the cu128 tag to match your driver
+# (e.g. cu121) or drop it for the CPU build.
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+torch==2.11.0+cu128
+stable-baselines3==2.8.0
+gymnasium==1.2.3
+numpy==2.4.3
+opencv-python==4.13.0.92
+evdev==1.9.3
+tensorboard==2.20.0
+tqdm==4.67.3
+rich==15.0.0

@@ -1,0 +1,45 @@
+# Python virtual environments - never commit these
+venv/
+.venv/
+
+# Python cache files - generated automatically, not source code
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# PyCharm project files
+.idea/
+
+# Training outputs - these will be large
+runs/
+checkpoints/
+*.pt
+*.pth
+
+# Screenshots and recordings saved during development
+screenshots/
+recordings/
+
+# Runtime artifacts and heavy binaries (dir kept via .gitkeep)
+data/*
+!data/.gitkeep
+*.sl2
+*.cache
+*.log
+output.txt
+
+# Training outputs (dirs kept via .gitkeep)
+models/*
+logs/*
+!models/.gitkeep
+!logs/.gitkeep
+
+# Interactive capture dumps
+tests/captures/
+
+# OS files
+.DS_Store
+
+# Claude
+CLAUDE.md
