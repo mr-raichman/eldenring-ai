@@ -19,7 +19,9 @@ from eldenring_ai.io import input
 from eldenring_ai.io.capture import ScreenCapture
 from eldenring_ai.io.memory import GameMemory, get_game_state, find_pid, reset_boss_hp_smoothing
 from eldenring_ai.rl.reward import compute_reward
+from eldenring_ai.ui import shared_stats
 from eldenring_ai.ui.dashboard import _print_dashboard
+from eldenring_ai.ui.metrics import EPISODE_METRICS, COUNTERS
 
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("WAYLAND_DISPLAY", "wayland-1")
@@ -92,7 +94,7 @@ class EldenRingEnv(gymnasium.Env):
         return False
 
     def _initialize(self):
-        # --- per-episode state (reset at the start of every episode) ---
+        # per-episode state (reset at the start of every episode)
         self._action_history = deque(
             [np.zeros(input.N_ACTIONS, dtype=np.float32)] * config.HISTORY_LENGTH,
             maxlen=config.HISTORY_LENGTH,
@@ -114,7 +116,7 @@ class EldenRingEnv(gymnasium.Env):
 
         self._stop_requested = False
 
-        # --- persisted training stats (restored from session_stats.json) ---
+        # persisted training stats (restored from session_stats.json)
         self.episode_count = 0
 
         self.total_deaths = 0
@@ -124,31 +126,23 @@ class EldenRingEnv(gymnasium.Env):
 
         self.training_actions = {action: 0 for action in input.ACTIONS}
 
-        self.best_ep_reward = -1000.0
-        self.best_boss_hp = 1.0
-        self.best_ep_steps = 0
-
-        self.reward_mean = deque(
-            [0.0] * config.MEAN_STATS_WINDOW, maxlen=config.MEAN_STATS_WINDOW
-        )
-        self.boss_hp_mean = deque(
-            [0.0] * config.MEAN_STATS_WINDOW, maxlen=config.MEAN_STATS_WINDOW
-        )
-        self.steps_mean = deque(
-            [0.0] * config.MEAN_STATS_WINDOW, maxlen=config.MEAN_STATS_WINDOW
-        )
+        # Registry-driven episode metrics: running best and rolling-mean window per key.
+        self._metric_best = {m.key: None for m in EPISODE_METRICS}
+        self._metric_window = {
+            m.key: deque([0.0] * config.MEAN_STATS_WINDOW, maxlen=config.MEAN_STATS_WINDOW)
+            for m in EPISODE_METRICS
+        }
 
         self.actions_mean = deque(
             [np.zeros(input.N_ACTIONS, dtype=np.float32)] * config.MEAN_STATS_WINDOW,
             maxlen=config.MEAN_STATS_WINDOW,
         )
 
-        self._episode_reward_history = []
-
-        # --- current-episode stats ---
+        # current-episode stats
         self.ep_reward = 0
         self.ep_boss_hp = 1.0
         self.ep_actions = {action: 0 for action in input.ACTIONS}
+        self._episode_reward_history = []  # cumulative reward per step, for the terminal graph
 
         self._last_obs = None
 
@@ -178,6 +172,22 @@ class EldenRingEnv(gymnasium.Env):
             "st_history": np.array(self._st_history, dtype=np.float32),
         }
 
+    def _episode_metric_values(self):
+        """Current values for the registry metrics (the just-finished episode).
+        To add a metric: add it to EPISODE_METRICS and return its value here."""
+        return {
+            "reward": self.ep_reward,
+            "boss_hp": self.ep_boss_hp,
+            "steps": self.ep_steps,
+        }
+
+    def _publish_episode_metrics(self, values):
+        """Expose this episode's metrics + counters for TensorBoard, which
+        StatsLoggerCallback drains into the SB3 logger."""
+        payload = {m.tb_tag: values[m.key] for m in EPISODE_METRICS}
+        payload.update({c.tb_tag: getattr(self, c.key) for c in COUNTERS})
+        shared_stats.episode_metrics = payload
+
     def step(self, action):
         start_lock = time.time()
 
@@ -187,7 +197,7 @@ class EldenRingEnv(gymnasium.Env):
                 0.0, True, False, {},
             )
 
-        # --- execute the chosen action ---
+        # execute the chosen action
         selected_action = input.ACTION_BY_ID[action]
 
         self.toggle_state = input.execute_action(
@@ -200,7 +210,7 @@ class EldenRingEnv(gymnasium.Env):
         one_hot[action] = 1.0
         self._action_history.append(one_hot)
 
-        # --- capture new observation and game state ---
+        # capture new observation and game state
         try:
             frame, observation = self.capture.get_frame()
             self.memory.refresh()
@@ -217,7 +227,7 @@ class EldenRingEnv(gymnasium.Env):
                 {},
             )
 
-        # --- reward ---
+        # reward
         boss_reward, player_punish, reward, _ = compute_reward(
             player_hp, self.prev_player_hp,
             boss_hp,   self.prev_boss_hp,
@@ -226,7 +236,7 @@ class EldenRingEnv(gymnasium.Env):
             self._hp_history, self._action_history
         )
 
-        # --- termination / truncation ---
+        # termination / truncation
         if player_hp <= 0:
             terminated = True
             self.total_deaths += 1
@@ -245,7 +255,7 @@ class EldenRingEnv(gymnasium.Env):
         else:
             truncated = False
 
-        # --- update history buffers and previous-step values ---
+        # update history buffers and previous-step values
         self._hp_history.append(player_hp)
         if min(max(0.0, self.prev_boss_hp - boss_hp), 1.0) > 0:
             self._boss_hp_history.append(1)
@@ -261,7 +271,6 @@ class EldenRingEnv(gymnasium.Env):
         self.ep_reward += reward
         self.ep_boss_hp = boss_hp
         self.ep_steps += 1
-
         self._episode_reward_history.append(self.ep_reward)
 
         obs_dict = self._build_obs(observation)
@@ -319,17 +328,24 @@ class EldenRingEnv(gymnasium.Env):
         if self.episode_count == 0:
             self.training_start_time = time.time()
 
-        self.best_ep_reward = max(self.best_ep_reward, self.ep_reward)
-        self.best_boss_hp = min(self.best_boss_hp, self.ep_boss_hp)
-        self.best_ep_steps = max(self.best_ep_steps, self.ep_steps)
+        values = self._episode_metric_values()
+        for m in EPISODE_METRICS:
+            v = values[m.key]
+            best = self._metric_best[m.key]
+            if best is None:
+                self._metric_best[m.key] = v
+            elif m.better == "max":
+                self._metric_best[m.key] = max(best, v)
+            elif m.better == "min":
+                self._metric_best[m.key] = min(best, v)
 
         if self.episode_count != 0:
-            self.reward_mean.append(self.ep_reward)
-            self.boss_hp_mean.append(self.ep_boss_hp)
-            self.steps_mean.append(self.ep_steps)
+            for m in EPISODE_METRICS:
+                self._metric_window[m.key].append(values[m.key])
             self.actions_mean.append(
                 np.array(list(self.ep_actions.values()), dtype=np.float32)
             )
+            self._publish_episode_metrics(values)
 
         if not config.DEBUG_MODE and self.episode_count != 0:
             _print_dashboard(self)
@@ -385,62 +401,43 @@ class EldenRingEnv(gymnasium.Env):
         return obs_dict, {}
 
     def _save_persist(self):
+        data = {
+            "episode_count": self.episode_count,
+            "training_actions": self.training_actions,
+            "actions_mean": [arr.tolist() for arr in self.actions_mean],
+            "training_start_time": self.training_start_time,
+        }
+        for c in COUNTERS:
+            data[c.key] = getattr(self, c.key)
+        for m in EPISODE_METRICS:
+            data[m.persist_best] = self._metric_best[m.key]
+            data[m.persist_mean] = list(self._metric_window[m.key])
         with open(PERSIST_FILE, "w") as f:
-            json.dump(
-                {
-                    "episode_count": self.episode_count,
-                    "total_deaths": self.total_deaths,
-                    "total_kills": self.total_kills,
-                    "total_truncations": self.total_truncations,
-                    "total_grace_recoveries": self.total_grace_recoveries,
-                    "training_actions": self.training_actions,
-                    "best_ep_reward": self.best_ep_reward,
-                    "best_boss_hp": self.best_boss_hp,
-                    "best_ep_steps": self.best_ep_steps,
-                    "reward_mean": list(self.reward_mean),
-                    "boss_hp_mean": list(self.boss_hp_mean),
-                    "steps_mean": list(self.steps_mean),
-                    "actions_mean": [arr.tolist() for arr in self.actions_mean],
-                    "training_start_time": self.training_start_time,
-                },
-                f,
-            )
+            json.dump(data, f)
 
     def _load_persist(self):
-        if os.path.exists(PERSIST_FILE):
-            with open(PERSIST_FILE) as f:
-                data = json.load(f)
-            self.episode_count = data.get("episode_count", 0)
-            self.total_deaths = data.get("total_deaths", 0)
-            self.total_kills = data.get("total_kills", 0)
-            self.total_truncations = data.get("total_truncations", 0)
-            self.total_grace_recoveries = data.get("total_grace_recoveries", 0)
-            self.training_actions = data.get(
-                "training_actions", {action: 0 for action in input.ACTIONS}
-            )
-            self.best_ep_reward = data.get("best_ep_reward", 0.0)
-            self.best_boss_hp = data.get("best_boss_hp", 1.0)
-            self.best_ep_steps = data.get("best_ep_steps", 0)
+        if not os.path.exists(PERSIST_FILE):
+            return
+        with open(PERSIST_FILE) as f:
+            data = json.load(f)
 
-            self.reward_mean = deque(
-                data.get("reward_mean", [0.0] * config.MEAN_STATS_WINDOW),
-                maxlen=config.MEAN_STATS_WINDOW,
-            )
-            self.boss_hp_mean = deque(
-                data.get("boss_hp_mean", [0.0] * config.MEAN_STATS_WINDOW),
-                maxlen=config.MEAN_STATS_WINDOW,
-            )
-            self.steps_mean = deque(
-                data.get("steps_mean", [0.0] * config.MEAN_STATS_WINDOW),
+        self.episode_count = data.get("episode_count", 0)
+        self.training_actions = data.get(
+            "training_actions", {action: 0 for action in input.ACTIONS}
+        )
+        self.training_start_time = data.get("training_start_time", 0)
+
+        for c in COUNTERS:
+            setattr(self, c.key, data.get(c.key, 0))
+
+        for m in EPISODE_METRICS:
+            self._metric_best[m.key] = data.get(m.persist_best)
+            self._metric_window[m.key] = deque(
+                data.get(m.persist_mean, [0.0] * config.MEAN_STATS_WINDOW),
                 maxlen=config.MEAN_STATS_WINDOW,
             )
 
-            self.actions_mean = deque(
-                [
-                    np.array(arr, dtype=np.float32)
-                    for arr in data.get("actions_mean", [])
-                ],
-                maxlen=config.MEAN_STATS_WINDOW,
-            )
-
-            self.training_start_time = data.get("training_start_time", 0)
+        self.actions_mean = deque(
+            [np.array(arr, dtype=np.float32) for arr in data.get("actions_mean", [])],
+            maxlen=config.MEAN_STATS_WINDOW,
+        )

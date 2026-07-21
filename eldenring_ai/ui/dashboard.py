@@ -1,22 +1,38 @@
 """
-dashboard.py - renders the per-episode training dashboard: session totals,
-episode/best/rolling stats, per-action counts, live PPO metrics, and the ASCII
-reward-over-time graph printed after each episode.
+dashboard.py - renders the per-episode training dashboard with Rich: a header
+panel (session totals), tables for the episode metrics, per-action counts, and
+live PPO metrics, plus a plotext line chart of the episode's cumulative reward.
+Table rows are driven by the registry in ui/metrics.py, so adding a tracked
+metric there shows up here automatically. Longer-term graphs over training live
+in TensorBoard (tensorboard --logdir logs).
 """
 
 import time
 
+import plotext as plt
+from rich import box
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
 from eldenring_ai import config
-from eldenring_ai.ui import shared_stats
 from eldenring_ai.io.input import ACTIONS
+from eldenring_ai.ui import shared_stats
+from eldenring_ai.ui.metrics import COUNTERS, EPISODE_METRICS
+
+# Printed, not Live-rendered, because SB3's progress_bar already runs a Rich Live
+# display and two Live displays on one stdout conflict.
+_console = Console()
 
 _PPO_DISPLAY = [
     ("train/entropy_loss",         "Entropy loss"),
     ("train/explained_variance",   "Explained variance"),
     ("train/value_loss",           "Value loss"),
     ("train/policy_gradient_loss", "Policy grad loss"),
-    ("train/clip_fraction", "Clip fraction"),
+    ("train/clip_fraction",        "Clip fraction"),
 ]
+
 
 def _fmt_time(seconds):
     h = int(seconds // 3600)
@@ -24,90 +40,90 @@ def _fmt_time(seconds):
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
-def _render_reward_graph(self, n_rows=15, max_width=80):
+
+def _fmt(value, fmt):
+    return "-" if value is None else format(value, fmt)
+
+
+def _fmt_ppo(value):
+    if value is None:
+        return "-"
+    return f"{value:+.5f}" if isinstance(value, float) else str(int(value))
+
+
+def _reward_panel(self, width=64, height=12):
+    """plotext line chart of the episode's cumulative reward: boss hits push it
+    up, player hits pull it down. None until the episode has at least two steps."""
     history = self._episode_reward_history
     if len(history) < 2:
-        return []
+        return None
+    plt.clf()
+    plt.plot(history, marker="braille")
+    plt.plotsize(width, height)
+    plt.theme("clear")
+    plt.xlabel("step")
+    plt.ylabel("reward")
+    return Panel(
+        Text.from_ansi(plt.build()),
+        title="Episode reward",
+        title_align="left",
+        box=box.HEAVY,
+    )
 
-    total_steps = len(history)
-    batches = []
-    for i in range(n_rows - 1):
-        start = int(i       * total_steps / (n_rows - 1))
-        end   = int((i + 1) * total_steps / (n_rows - 1))
-        end   = min(end, total_steps)
-        earned = history[end - 1] - (history[start - 1] if start > 0 else 0)
-        batches.append(earned)
-
-    max_abs = max(abs(b) for b in batches) if batches else 1.0
-    if max_abs == 0:
-        max_abs = 1.0
-
-    lines = []
-    for earned in batches:
-        char   = "+" if earned >= 0 else "-"
-        filled = int((abs(earned) / max_abs) * max_width)
-        lines.append(f"  │{char * filled}")
-    lines.append(f"  └{'─' * max_width}")
-    return lines
 
 def _print_dashboard(self):
+    win = min(config.MEAN_STATS_WINDOW, max(1, self.episode_count))
     training_time = time.time() - self.training_start_time
-    elapsed = time.time() - getattr(self, 'start_ep_time', time.time())
+    elapsed = time.time() - getattr(self, "start_ep_time", time.time())
     steps_per_second = self.ep_steps / max(elapsed, 0.001)
-    training_steps  = shared_stats.ppo_stats.get("total_timesteps", 0)
+    training_steps = shared_stats.ppo_stats.get("total_timesteps", 0)
 
-    boss_hp  = f"{self.ep_boss_hp * 100:.1f}%"
-    best_boss_hp  = f"{self.best_boss_hp * 100:.1f}%"
+    counters = "    ".join(f"{c.label} [b]{getattr(self, c.key)}[/]" for c in COUNTERS)
+    header = Panel(
+        f"Training time [b]{_fmt_time(training_time)}[/]     "
+        f"Steps/sec [b]{steps_per_second:.1f}[/]     "
+        f"Steps [b]{training_steps:,}[/]\n{counters}",
+        title=f"ELDEN RING  -  Episode {self.episode_count}",
+        title_align="left",
+        box=box.HEAVY,
+    )
 
-    reward_mean = sum(self.reward_mean) / min(config.MEAN_STATS_WINDOW, self.episode_count)
-    boss_hp_mean = sum(self.boss_hp_mean) / min(config.MEAN_STATS_WINDOW, self.episode_count)
-    steps_mean = sum(self.steps_mean) / min(config.MEAN_STATS_WINDOW, self.episode_count)
+    stats = Table(box=box.SIMPLE_HEAVY, pad_edge=False)
+    for col, justify in (("Stat", "left"), ("Episode", "right"), ("Best", "right"), ("Local mean", "right")):
+        stats.add_column(col, justify=justify)
+    values = self._episode_metric_values()
+    for m in EPISODE_METRICS:
+        mean = sum(self._metric_window[m.key]) / win
+        stats.add_row(
+            m.label,
+            _fmt(values[m.key], m.fmt),
+            _fmt(self._metric_best[m.key], m.fmt),
+            _fmt(mean, m.fmt),
+        )
 
-    actions_mean = {}
-
-    SEPARATOR = 72
-
-    row = []
-    row.append(f"  ELDEN RING ═ EPISODE {self.episode_count}")
-    row.append("═" * SEPARATOR)
-    row.append(f"  Training time  {_fmt_time(training_time)}   |   Steps/sec  {steps_per_second:.1f}   |   Steps  {training_steps:,}")
-    row.append("")
-    row.append(f"  Deaths  {self.total_deaths}   |   Victories  {self.total_kills}   |   Truncations  {self.total_truncations}   |   Graces  {self.total_grace_recoveries}")
-    row.append("═" * SEPARATOR)
-    row.append(f"  {'STATS':<15}  {'EPISODE':>12}  {'BEST':>10} {'LOCAL MEAN':>12}")
-    row.append("")
-    row.append(f"  {'Reward':<15}  {self.ep_reward:>+12.2f}  {self.best_ep_reward:>+10.2f} {reward_mean:>+12.2f}")
-    row.append(f"  {'Margit HP':<15}  {boss_hp:>12}  {best_boss_hp:>10} {boss_hp_mean*100:>11.1f}%")
-    row.append(f"  {'Steps':<15}  {self.ep_steps:>12,}  {self.best_ep_steps:>10,} {steps_mean:>12.0f}")
-    row.append("═" * SEPARATOR)
-
-    row.append(f"  {'ACTION':<15}  {'EPISODE':>12}  {'TOTAL':>10} {'LOCAL MEAN':>12}")
-    row.append("")
+    actions = Table(box=box.SIMPLE_HEAVY, pad_edge=False)
+    for col, justify in (("Action", "left"), ("Episode", "right"), ("Total", "right"), ("Local mean", "right")):
+        actions.add_column(col, justify=justify)
     for name in ACTIONS:
-        ep_actions    = self.ep_actions[name]
-        total_actions   = self.training_actions[name]
+        action_id = ACTIONS[name].action_id
+        mean = sum(one_hot[action_id] for one_hot in self.actions_mean) / win
+        actions.add_row(
+            name,
+            f"{self.ep_actions[name]:,}",
+            f"{self.training_actions[name]:,}",
+            f"{mean:.0f}",
+        )
 
-        actions_mean[name] = 0
-        for one_hot in self.actions_mean:
-            actions_mean[name] += one_hot[ACTIONS[name].action_id]
-        actions_mean[name] = actions_mean[name] / min(config.MEAN_STATS_WINDOW, self.episode_count)
-
-        row.append(f"  {name:<15}  {ep_actions:>12}  {total_actions:>10} {actions_mean[name]:>12.0f}")
-    row.append("═" * SEPARATOR)
-    row.append(f"  {'PPO METRICS':>10} {'VALUE':>29}")
-    row.append("")
+    ppo = Table(box=box.SIMPLE_HEAVY, pad_edge=False)
+    ppo.add_column("PPO metric", justify="left")
+    ppo.add_column("Value", justify="right")
     for key, label in _PPO_DISPLAY:
-        val     = shared_stats.ppo_stats.get(key) if shared_stats.ppo_stats else None
-        val_str = f"{val:+10.5f}" if isinstance(val, float) else str(int(val)) if val is not None else "-"
-        row.append(f"  {label:<30} {val_str}")
+        value = shared_stats.ppo_stats.get(key) if shared_stats.ppo_stats else None
+        ppo.add_row(label, _fmt_ppo(value))
 
-    row.append("═" * SEPARATOR)
-
-    graph_lines = _render_reward_graph(self, n_rows=len(row))
-
-    max_rows = max(len(row), len(graph_lines))
-    for i in range(max_rows):
-        l = row[i]        if i < len(row)        else ""
-        r = graph_lines[i] if i < len(graph_lines) else ""
-        print(f"{l:<72}  {r}")
-    print(" ")
+    renderables = [header, stats, actions, ppo]
+    reward_panel = _reward_panel(self)
+    if reward_panel is not None:
+        renderables.append(reward_panel)
+    _console.print(Group(*renderables))
+    _console.print()

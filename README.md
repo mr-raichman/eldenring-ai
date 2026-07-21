@@ -78,7 +78,11 @@ uv run pytest
 ```
 
 Training auto-recovers on crashes and checkpoints periodically to `models/`; TensorBoard
-logs go to `logs/`.
+logs go to `logs/`. Watch the live graphs (reward, Margit HP, steps, PPO metrics) with:
+
+```bash
+tensorboard --logdir logs
+```
 
 ## Project layout
 
@@ -99,7 +103,7 @@ eldenring_ai/            the importable package
     reward.py           reward shaping
     features_extractor.py  CNN feature extractor
     train.py            PPO setup, callbacks, checkpointing (entry point)
-  ui/                 dashboard.py, shared_stats.py - live training readout
+  ui/                 dashboard.py (Rich), metrics.py (metric registry), shared_stats.py
 
 tools/                live diagnostics + gamepad REPL (loose scripts, not collected by pytest)
   _bootstrap.py         shared sys.path + display-env setup, imported first by each tool

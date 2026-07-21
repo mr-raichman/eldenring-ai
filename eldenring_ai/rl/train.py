@@ -39,6 +39,9 @@ class StatsLoggerCallback(BaseCallback):
     def _on_rollout_end(self):
         if self.model.logger.name_to_value:
             shared_stats.ppo_stats.update(dict(self.model.logger.name_to_value))
+        # Push the env's per-episode metrics into TensorBoard on the timestep axis.
+        for tag, value in shared_stats.episode_metrics.items():
+            self.logger.record(tag, value)
 
 
 class StopOnVictoryCallback(BaseCallback):
