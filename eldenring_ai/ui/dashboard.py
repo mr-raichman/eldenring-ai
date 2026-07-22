@@ -1,11 +1,11 @@
 """
 dashboard.py - the per-episode training dashboard (Rich), printed when an episode
-ends. A full-width, multi-panel layout: a header with session totals and the
-episode outcome; three columns (episode result + reward composition, per-action
-counts, whole-training PPO stats); a full-width events-and-quality strip; and two
-plotext charts (per-step reward and the HP/boss/stamina fight trajectory). Panels
-are driven by the registries in ui/metrics.py, so tracked fields appear here
-automatically. Long-run trends live in TensorBoard (tensorboard --logdir logs).
+ends. A compact info row (episode metrics, per-action counts, events & quality,
+whole-training PPO stats) sits above one full-width plotext chart that overlays the
+four episode traces: reward (yellow, right axis), player HP (blue), stamina (green)
+and boss HP (red) on the left 0-1 axis, layered boss at the bottom up to reward on
+top. The chart height is sized to fill the rest of the terminal. Panels are driven by the registries in
+ui/metrics.py. Long-run trends live in TensorBoard (tensorboard --logdir logs).
 """
 
 import time
@@ -25,7 +25,6 @@ from eldenring_ai.ui.metrics import (
     DERIVED_MEASURES,
     EPISODE_METRICS,
     EVENT_CATEGORIES,
-    REWARD_COMPONENTS,
 )
 
 # Printed, not Live-rendered, because SB3's progress_bar already runs a Rich Live
@@ -69,6 +68,14 @@ def _fmt_ppo(value):
     return f"{value:+.5f}" if isinstance(value, float) else str(int(value))
 
 
+def _table(*columns):
+    """A compact SIMPLE_HEAVY table (no blank edge rows)."""
+    t = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False)
+    for name, justify in columns:
+        t.add_column(name, justify=justify)
+    return t
+
+
 def _header_panel(self, training_time, steps_per_second, training_steps):
     label, style = _OUTCOME.get(self._episode_outcome, ("-", "bold"))
     elapsed = time.time() - getattr(self, "start_ep_time", time.time())
@@ -87,109 +94,103 @@ def _header_panel(self, training_time, steps_per_second, training_steps):
     return Panel(body, title=title, title_align="left", box=box.HEAVY)
 
 
-def _result_panel(self, win):
-    stats = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False)
-    for col, justify in (("Stat", "left"), ("Episode", "right"), ("Best", "right"), ("Mean", "right")):
-        stats.add_column(col, justify=justify)
+def _metrics_panel(self, win):
+    stats = _table(("Stat", "left"), ("Ep", "right"), ("Best", "right"), ("Mean", "right"))
     values = self._episode_metric_values()
     for m in EPISODE_METRICS:
         mean = sum(self._metric_window[m.key]) / win
         stats.add_row(m.label, _fmt(values[m.key], m.fmt), _fmt(self._metric_best[m.key], m.fmt), _fmt(mean, m.fmt))
-
-    comp = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False, show_header=False)
-    comp.add_column("Component", justify="left")
-    comp.add_column("Value", justify="right")
-    composition = self._recorder.composition
-    for c in REWARD_COMPONENTS:
-        style = "bold" if c.key == "net" else ""
-        comp.add_row(c.label, Text(f"{composition[c.key]:+.2f}", style=style))
-
-    return Panel(
-        Group(stats, Text("reward composition", style="dim"), comp),
-        title="Episode result", title_align="left", box=box.HEAVY,
-    )
+    return Panel(stats, title="Episode", title_align="left", box=box.HEAVY)
 
 
-def _actions_panel(self, win):
-    actions = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False)
-    for col, justify in (("Action", "left"), ("Ep", "right"), ("%", "right"), ("Total", "right"), ("Mean", "right")):
-        actions.add_column(col, justify=justify)
-    total_ep = max(self.ep_steps, 1)
-    for name in ACTIONS:
-        action_id = ACTIONS[name].action_id
-        mean = sum(one_hot[action_id] for one_hot in self.actions_mean) / win
-        ep_count = self.ep_actions[name]
-        actions.add_row(
-            name, f"{ep_count:,}", f"{100 * ep_count / total_ep:.0f}",
-            f"{self.training_actions[name]:,}", f"{mean:.0f}",
-        )
-    return Panel(actions, title="Actions", title_align="left", box=box.HEAVY)
-
-
-def _ppo_panel():
-    ppo = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False)
-    ppo.add_column("PPO metric", justify="left")
-    ppo.add_column("Value", justify="right")
-    for key, label in _PPO_DISPLAY:
-        value = shared_stats.ppo_stats.get(key) if shared_stats.ppo_stats else None
-        ppo.add_row(label, _fmt_ppo(value))
-    return Panel(ppo, title="PPO (training)", title_align="left", box=box.HEAVY)
+def _actions_panel(self):
+    names = list(ACTIONS)
+    half = (len(names) + 1) // 2
+    left, right = names[:half], names[half:]
+    t = _table(("Action", "left"), ("Ep", "right"), ("Action", "left"), ("Ep", "right"))
+    for i in range(half):
+        ln = left[i]
+        row = [ln, f"{self.ep_actions[ln]}"]
+        if i < len(right):
+            rn = right[i]
+            row += [rn, f"{self.ep_actions[rn]}"]
+        else:
+            row += ["", ""]
+        t.add_row(*row)
+    return Panel(t, title="Actions", title_align="left", box=box.HEAVY)
 
 
 def _events_panel(self):
-    events = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False)
-    events.add_column("Event", justify="left")
-    events.add_column("Count", justify="right")
+    events = _table(("Event", "left"), ("Count", "right"))
     for e in EVENT_CATEGORIES:
         events.add_row(e.label, f"{self._recorder.event_counts[e.key]:,}")
 
-    quality = Table(box=box.SIMPLE_HEAVY, pad_edge=False, expand=True, show_edge=False)
-    quality.add_column("Quality", justify="left")
-    quality.add_column("Value", justify="right")
+    quality = _table(("Quality", "left"), ("Value", "right"))
     derived = self._recorder.derived_values()
     for d in DERIVED_MEASURES:
         quality.add_row(d.label, _fmt(derived[d.key], d.fmt))
 
     grid = Table.grid(expand=True)
     grid.add_column(ratio=1)
-    grid.add_column(width=4)  # gutter so Count and Quality don't touch
+    grid.add_column(width=4)
     grid.add_column(ratio=1)
     grid.add_row(events, "", quality)
     return Panel(grid, title="Events & quality", title_align="left", box=box.HEAVY)
 
 
-def _chart(series_list, title, width, height, ymin=None, ymax=None):
+def _ppo_panel():
+    ppo = _table(("PPO metric", "left"), ("Value", "right"))
+    for key, label in _PPO_DISPLAY:
+        value = shared_stats.ppo_stats.get(key) if shared_stats.ppo_stats else None
+        ppo.add_row(label, _fmt_ppo(value))
+    return Panel(ppo, title="PPO (training)", title_align="left", box=box.HEAVY)
+
+
+def _info_row(self, win):
+    grid = Table.grid(expand=True)
+    grid.add_column(ratio=3)
+    grid.add_column(ratio=4)
+    grid.add_column(ratio=5)
+    grid.add_column(ratio=4)
+    grid.add_row(_metrics_panel(self, win), _actions_panel(self), _events_panel(self), _ppo_panel())
+    return grid
+
+
+def _stairs(values):
+    """Expand a per-step series into stair-step (sample-and-hold) coordinates: each
+    value is held across its step and jumps vertically to the next, so the chart
+    shows exact values instead of interpolated diagonals."""
+    xs, ys = [], []
+    for i, v in enumerate(values):
+        xs.extend((i, i + 1))
+        ys.extend((v, v))
+    return xs, ys
+
+
+def _chart_panel(self, width, height):
+    """One full-width chart overlaying the four episode traces as stair steps.
+    Reward is on the right y-axis (its own scale); HP/stamina/boss share the left
+    0-1 axis. Drawn bottom-to-top boss -> stamina -> HP -> reward, so reward sits on
+    top. Reward is an explicit RGB yellow because plotext's named "yellow" renders
+    as blue; stamina is a darker green so it doesn't read as the reward yellow."""
+    rec = self._recorder
     plt.clf()
-    for values, label in series_list:
-        plt.plot(values, label=label, marker="braille")
+    bx, by = _stairs(rec.boss_trace)
+    sx, sy = _stairs(rec.stamina_trace)
+    hx, hy = _stairs(rec.hp_trace)
+    rx, ry = _stairs(rec.step_rewards)
+    plt.plot(bx, by, label="Boss",    color="red",          marker="braille", yside="left")
+    plt.plot(sx, sy, label="Stamina", color=(34, 139, 34),  marker="braille", yside="left")
+    plt.plot(hx, hy, label="HP",      color="blue",         marker="braille", yside="left")
+    plt.plot(rx, ry, label="reward",  color=(255, 210, 0),  marker="braille", yside="right")
+    plt.ylim(0.0, 1.0, yside="left")
     plt.plotsize(width, height)
     plt.theme("clear")
-    if ymin is not None:
-        plt.ylim(ymin, ymax)
     plt.xlabel("step")
     lines = plt.build().split("\n")
     while lines and not lines[-1].strip():
         lines.pop()
-    return Panel(Text.from_ansi("\n".join(lines)), title=title, title_align="left", box=box.HEAVY)
-
-
-def _charts_row(self):
-    rec = self._recorder
-    if len(rec.step_rewards) < 2:
-        return None
-    # Each chart sits in a HEAVY panel (2 border + 2 padding) inside a 2-column grid,
-    # so the plot width must leave that chrome plus a 1-char safety margin.
-    half = max(40, (_console.size.width - 10) // 2)
-    reward_chart = _chart([(rec.step_rewards, "reward")], "Step reward", half, 14)
-    trajectory = _chart(
-        [(rec.hp_trace, "HP"), (rec.boss_trace, "Boss"), (rec.stamina_trace, "Stam")],
-        "Fight trajectory", half, 14, ymin=0.0, ymax=1.0,
-    )
-    grid = Table.grid(expand=True)
-    grid.add_column(ratio=1)
-    grid.add_column(ratio=1)
-    grid.add_row(reward_chart, trajectory)
-    return grid
+    return Panel(Text.from_ansi("\n".join(lines)), title="Episode trace", title_align="left", box=box.HEAVY)
 
 
 def _print_dashboard(self):
@@ -199,20 +200,21 @@ def _print_dashboard(self):
     steps_per_second = self.ep_steps / max(elapsed, 0.001)
     training_steps = shared_stats.ppo_stats.get("total_timesteps", 0)
 
-    top = Table.grid(expand=True)
-    top.add_column(ratio=5)
-    top.add_column(ratio=4)
-    top.add_column(ratio=4)
-    top.add_row(_result_panel(self, win), _actions_panel(self, win), _ppo_panel())
+    header = _header_panel(self, training_time, steps_per_second, training_steps)
+    info = _info_row(self, win)
 
-    renderables = [
-        _header_panel(self, training_time, steps_per_second, training_steps),
-        top,
-        _events_panel(self),
-    ]
-    charts = _charts_row(self)
-    if charts is not None:
-        renderables.append(charts)
+    if len(self._recorder.step_rewards) < 2:
+        _console.print(Group(header, info))
+        _console.print()
+        return
 
-    _console.print(Group(*renderables))
+    # Measure the info block and give the rest of the terminal height to the chart.
+    with _console.capture() as cap:
+        _console.print(Group(header, info))
+    used = len(cap.get().rstrip("\n").split("\n"))
+    chart_height = max(14, _console.size.height - used - 3)
+    chart_width = _console.size.width - 4
+
+    chart = _chart_panel(self, chart_width, chart_height)
+    _console.print(Group(header, info, chart))
     _console.print()

@@ -159,11 +159,6 @@ class EldenRingEnv(gymnasium.Env):
             for m in EPISODE_METRICS
         }
 
-        self.actions_mean = deque(
-            [np.zeros(input.N_ACTIONS, dtype=np.float32)] * config.MEAN_STATS_WINDOW,
-            maxlen=config.MEAN_STATS_WINDOW,
-        )
-
         # current-episode stats
         self.ep_reward = 0
         self.ep_boss_hp = 1.0
@@ -407,9 +402,6 @@ class EldenRingEnv(gymnasium.Env):
                 elif m.better == "min":
                     self._metric_best[m.key] = min(best, v)
                 self._metric_window[m.key].append(v)
-            self.actions_mean.append(
-                np.array(list(self.ep_actions.values()), dtype=np.float32)
-            )
             self._publish_episode_metrics(values)
             self._recorder.write_episode(self._build_episode_context())
             if not config.DEBUG_MODE:
@@ -469,7 +461,6 @@ class EldenRingEnv(gymnasium.Env):
         data = {
             "episode_count": self.episode_count,
             "training_actions": self.training_actions,
-            "actions_mean": [arr.tolist() for arr in self.actions_mean],
             "training_start_time": self.training_start_time,
         }
         for c in COUNTERS:
@@ -501,8 +492,3 @@ class EldenRingEnv(gymnasium.Env):
                 data.get(m.persist_mean, [0.0] * config.MEAN_STATS_WINDOW),
                 maxlen=config.MEAN_STATS_WINDOW,
             )
-
-        self.actions_mean = deque(
-            [np.array(arr, dtype=np.float32) for arr in data.get("actions_mean", [])],
-            maxlen=config.MEAN_STATS_WINDOW,
-        )
