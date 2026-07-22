@@ -15,3 +15,6 @@ SESSION_STATS = DATA_DIR / "session_stats.json"
 PTR_CACHE = DATA_DIR / "world_chr_man_ptr.cache"
 WF_LOG = DATA_DIR / "wf-recorder.log"
 SAVE_BACKUP = DATA_DIR / "eldenring-save-backup.sl2"
+
+EPISODE_RECORDS = DATA_DIR / "episode_records.jsonl"
+STEP_RECORDS = DATA_DIR / "step_records.csv"

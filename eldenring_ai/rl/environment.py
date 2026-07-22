@@ -21,12 +21,32 @@ from eldenring_ai.io.memory import GameMemory, get_game_state, find_pid, reset_b
 from eldenring_ai.rl.reward import compute_reward
 from eldenring_ai.ui import shared_stats
 from eldenring_ai.ui.dashboard import _print_dashboard
-from eldenring_ai.ui.metrics import EPISODE_METRICS, COUNTERS
+from eldenring_ai.ui.episode_log import EpisodeRecorder
+from eldenring_ai.ui.metrics import (
+    COUNTERS,
+    DERIVED_MEASURES,
+    EPISODE_METRICS,
+    EVENT_CATEGORIES,
+    REWARD_COMPONENTS,
+)
 
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("WAYLAND_DISPLAY", "wayland-1")
 
 PERSIST_FILE = str(paths.SESSION_STATS)
+
+# Short-name -> SB3 logger tag for the PPO snapshot saved into each episode record.
+_PPO_SNAPSHOT_KEYS = [
+    ("explained_variance",   "train/explained_variance"),
+    ("entropy_loss",         "train/entropy_loss"),
+    ("value_loss",           "train/value_loss"),
+    ("policy_gradient_loss", "train/policy_gradient_loss"),
+    ("clip_fraction",        "train/clip_fraction"),
+    ("approx_kl",            "train/approx_kl"),
+    ("learning_rate",        "train/learning_rate"),
+    ("ep_rew_mean",          "rollout/ep_rew_mean"),
+    ("ep_len_mean",          "rollout/ep_len_mean"),
+]
 
 
 class EldenRingEnv(gymnasium.Env):
@@ -78,6 +98,8 @@ class EldenRingEnv(gymnasium.Env):
 
         self.capture = ScreenCapture()
 
+        self._recorder = EpisodeRecorder()
+
         self._initialize()
         self._load_persist()
 
@@ -113,13 +135,17 @@ class EldenRingEnv(gymnasium.Env):
         self.prev_stamina = 1.0
 
         self.ep_steps = 0
+        self._episode_outcome = None
 
         self._stop_requested = False
+
+        self._recorder.reset()
 
         # persisted training stats (restored from session_stats.json)
         self.episode_count = 0
 
         self.total_deaths = 0
+        self.total_fall_deaths = 0
         self.total_kills = 0
         self.total_truncations = 0
         self.total_grace_recoveries = 0
@@ -142,7 +168,6 @@ class EldenRingEnv(gymnasium.Env):
         self.ep_reward = 0
         self.ep_boss_hp = 1.0
         self.ep_actions = {action: 0 for action in input.ACTIONS}
-        self._episode_reward_history = []  # cumulative reward per step, for the terminal graph
 
         self._last_obs = None
 
@@ -182,11 +207,32 @@ class EldenRingEnv(gymnasium.Env):
         }
 
     def _publish_episode_metrics(self, values):
-        """Expose this episode's metrics + counters for TensorBoard, which
-        StatsLoggerCallback drains into the SB3 logger."""
+        """Expose this episode's metrics + counters + reward records for TensorBoard,
+        which StatsLoggerCallback drains into the SB3 logger."""
         payload = {m.tb_tag: values[m.key] for m in EPISODE_METRICS}
         payload.update({c.tb_tag: getattr(self, c.key) for c in COUNTERS})
+        payload.update({c.tb_tag: self._recorder.composition[c.key] for c in REWARD_COMPONENTS})
+        payload.update({e.tb_tag: self._recorder.event_counts[e.key] for e in EVENT_CATEGORIES})
+        derived = self._recorder.derived_values()
+        payload.update({d.tb_tag: derived[d.key] for d in DERIVED_MEASURES if derived[d.key] is not None})
         shared_stats.episode_metrics = payload
+
+    def _build_episode_context(self):
+        """Assemble the per-episode record context from env state and PPO stats."""
+        now = time.time()
+        duration = now - getattr(self, "start_ep_time", now)
+        ppo = shared_stats.ppo_stats
+        return {
+            "episode": self.episode_count,
+            "training_time_s": now - self.training_start_time,
+            "total_timesteps": ppo.get("total_timesteps", 0),
+            "outcome": self._episode_outcome or "timeout",
+            "duration_s": duration,
+            "steps_per_s": self.ep_steps / max(duration, 0.001),
+            "final_boss_hp": self.ep_boss_hp,
+            "actions": dict(self.ep_actions),
+            "ppo": {name: ppo.get(tag) for name, tag in _PPO_SNAPSHOT_KEYS},
+        }
 
     def step(self, action):
         start_lock = time.time()
@@ -227,8 +273,10 @@ class EldenRingEnv(gymnasium.Env):
                 {},
             )
 
-        # reward
-        boss_reward, player_punish, reward, _ = compute_reward(
+        # reward (prev values captured before they are advanced below, for records)
+        prev_hp_at_step = self.prev_player_hp
+        prev_stamina_at_step = self.prev_stamina
+        boss_reward, player_punish, reward, events = compute_reward(
             player_hp, self.prev_player_hp,
             boss_hp,   self.prev_boss_hp,
             stamina,   self.prev_stamina,
@@ -237,21 +285,30 @@ class EldenRingEnv(gymnasium.Env):
         )
 
         # termination / truncation
+        defeat_bonus = 0.0
         if player_hp <= 0:
             terminated = True
             self.total_deaths += 1
+            if any(e.startswith("FALL_DEATH") for e in events):
+                self.total_fall_deaths += 1
+                self._episode_outcome = "fall_death"
+            else:
+                self._episode_outcome = "combat_death"
         else:
             terminated = False
 
         if boss_hp <= config.BOSS_DEFEAT_HP_THRESHOLD:
             terminated = True
             self.total_kills += 1
-            reward += config.REWARD_BOSS_DEFEATED
+            defeat_bonus = config.REWARD_BOSS_DEFEATED
+            reward += defeat_bonus
+            self._episode_outcome = "kill"
             self._stop_requested = True
 
         if self.ep_steps >= config.MAX_STEPS_PER_EPISODE and not terminated:
             self.total_truncations += 1
             truncated = True
+            self._episode_outcome = "timeout"
         else:
             truncated = False
 
@@ -270,8 +327,14 @@ class EldenRingEnv(gymnasium.Env):
 
         self.ep_reward += reward
         self.ep_boss_hp = boss_hp
+
+        self._recorder.record_step(
+            self.ep_steps, selected_action, player_hp, boss_hp, stamina,
+            prev_hp_at_step, prev_stamina_at_step,
+            boss_reward, player_punish, reward, events, defeat_bonus,
+        )
+
         self.ep_steps += 1
-        self._episode_reward_history.append(self.ep_reward)
 
         obs_dict = self._build_obs(observation)
 
@@ -328,27 +391,29 @@ class EldenRingEnv(gymnasium.Env):
         if self.episode_count == 0:
             self.training_start_time = time.time()
 
-        values = self._episode_metric_values()
-        for m in EPISODE_METRICS:
-            v = values[m.key]
-            best = self._metric_best[m.key]
-            if best is None:
-                self._metric_best[m.key] = v
-            elif m.better == "max":
-                self._metric_best[m.key] = max(best, v)
-            elif m.better == "min":
-                self._metric_best[m.key] = min(best, v)
-
-        if self.episode_count != 0:
+        # Process the just-finished episode only if one actually ran. ep_steps is 0 on
+        # the first reset of any run - fresh OR resumed from a checkpoint (where
+        # episode_count is already restored) - so this avoids corrupting best/mean
+        # stats and writing a bogus zero-step record on startup.
+        if self.ep_steps > 0:
+            values = self._episode_metric_values()
             for m in EPISODE_METRICS:
-                self._metric_window[m.key].append(values[m.key])
+                v = values[m.key]
+                best = self._metric_best[m.key]
+                if best is None:
+                    self._metric_best[m.key] = v
+                elif m.better == "max":
+                    self._metric_best[m.key] = max(best, v)
+                elif m.better == "min":
+                    self._metric_best[m.key] = min(best, v)
+                self._metric_window[m.key].append(v)
             self.actions_mean.append(
                 np.array(list(self.ep_actions.values()), dtype=np.float32)
             )
             self._publish_episode_metrics(values)
-
-        if not config.DEBUG_MODE and self.episode_count != 0:
-            _print_dashboard(self)
+            self._recorder.write_episode(self._build_episode_context())
+            if not config.DEBUG_MODE:
+                _print_dashboard(self)
 
         self._save_persist()
 

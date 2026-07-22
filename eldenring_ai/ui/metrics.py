@@ -28,6 +28,33 @@ class Counter:
     tb_tag: str        # TensorBoard scalar tag
 
 
+@dataclass(frozen=True)
+class RewardComponent:
+    """One additive slice of an episode's net reward (see EpisodeRecorder)."""
+    key: str           # recorder attribute / JSONL field
+    label: str         # dashboard label
+    tb_tag: str        # TensorBoard scalar tag
+
+
+@dataclass(frozen=True)
+class EventCategory:
+    """A per-step reward event, counted per episode by matching the prefix of the
+    free-form strings compute_reward emits."""
+    key: str           # recorder counter / JSONL field (n_<key> convention)
+    label: str         # dashboard label
+    prefix: str        # event-string prefix, e.g. "BOSS_HIT"
+    tb_tag: str        # TensorBoard scalar tag
+
+
+@dataclass(frozen=True)
+class DerivedMeasure:
+    """A per-episode quality measure derived from the step traces."""
+    key: str           # recorder attribute / JSONL field
+    label: str         # dashboard label
+    fmt: str           # format spec
+    tb_tag: str        # TensorBoard scalar tag
+
+
 # Per-episode metrics. `persist_*` keep the existing session_stats.json key names
 # so old stats files keep loading unchanged.
 EPISODE_METRICS = [
@@ -39,7 +66,41 @@ EPISODE_METRICS = [
 # Session counters.
 COUNTERS = [
     Counter("total_deaths",           "Deaths",      "counters/deaths"),
+    Counter("total_fall_deaths",      "Falls",       "counters/fall_deaths"),
     Counter("total_kills",            "Victories",   "counters/victories"),
     Counter("total_truncations",      "Truncations", "counters/truncations"),
     Counter("total_grace_recoveries", "Graces",      "counters/graces"),
+]
+
+# Additive slices of the episode's net reward. Signed so the dashboard can show
+# them directly; boss_reward and defeat_bonus are positive, the rest negative.
+REWARD_COMPONENTS = [
+    RewardComponent("boss_reward",     "Boss reward",    "reward/boss_total"),
+    RewardComponent("player_punish",   "Player punish",  "reward/punish_total"),
+    RewardComponent("step_penalty",    "Step penalty",   "reward/step_penalty_total"),
+    RewardComponent("stamina_penalty", "Stamina penalty", "reward/stamina_penalty_total"),
+    RewardComponent("defeat_bonus",    "Defeat bonus",   "reward/defeat_bonus"),
+    RewardComponent("net",             "Net",            "reward/net"),
+]
+
+# Per-step reward events, counted per episode by prefix match on the event strings.
+EVENT_CATEGORIES = [
+    EventCategory("boss_hits",   "Boss hits",   "BOSS_HIT",             "events/boss_hits"),
+    EventCategory("hits_taken",  "Hits taken",  "HIT_TAKEN",            "events/hits_taken"),
+    EventCategory("dodge_bonus", "Dodge bonus", "DODGE_REWARD",         "events/dodge_bonus"),
+    EventCategory("greedy",      "Greedy",      "GREEDY_PENALTY",       "events/greedy"),
+    EventCategory("multihit",    "Multi-hit",   "MULTIPLE_HIT_PENALTY", "events/multihit"),
+    EventCategory("combat_death", "Combat death", "DEATH",              "events/combat_death"),
+    EventCategory("fall_death",  "Fall death",  "FALL_DEATH",           "events/fall_death"),
+    EventCategory("zero_stamina", "Zero stamina", "ZERO STAMINA",       "events/zero_stamina"),
+    EventCategory("step_penalty", "Step penalty", "STEP_PENALTY",       "events/step_penalty"),
+]
+
+# Per-episode quality measures derived from the step traces.
+DERIVED_MEASURES = [
+    DerivedMeasure("stamina_at_boss_hit_mean", "Stamina@hit", ".2f", "derived/stamina_at_boss_hit"),
+    DerivedMeasure("hp_at_hit_taken_mean",     "HP@taken",    ".2f", "derived/hp_at_hit_taken"),
+    DerivedMeasure("best_hit",                 "Best hit",    "+.2f", "derived/best_hit"),
+    DerivedMeasure("worst_hit",                "Worst hit",   "+.2f", "derived/worst_hit"),
+    DerivedMeasure("hits_taken_per_boss_hit",  "Taken/hit",   ".2f", "derived/hits_taken_per_boss_hit"),
 ]

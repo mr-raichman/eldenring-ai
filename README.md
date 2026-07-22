@@ -77,6 +77,11 @@ uv run python tools/capture_frames.py  # dump the AI frame stack
 uv run pytest
 ```
 
+A per-episode dashboard prints when each episode ends. Records are written under
+`data/`: `episode_records.jsonl` (one row per episode - reward composition, event
+rates, derived quality measures, PPO snapshot) and `step_records.csv` (per-step
+reward and reason for the most recent episodes).
+
 Training auto-recovers on crashes and checkpoints periodically to `models/`; TensorBoard
 logs go to `logs/`. Watch the live graphs (reward, Margit HP, steps, PPO metrics) with:
 
@@ -103,7 +108,8 @@ eldenring_ai/            the importable package
     reward.py           reward shaping
     features_extractor.py  CNN feature extractor
     train.py            PPO setup, callbacks, checkpointing (entry point)
-  ui/                 dashboard.py (Rich), metrics.py (metric registry), shared_stats.py
+  ui/                 dashboard.py (Rich), metrics.py (metric registry),
+                      episode_log.py (per-episode + per-step records), shared_stats.py
 
 tools/                live diagnostics + gamepad REPL (loose scripts, not collected by pytest)
   _bootstrap.py         shared sys.path + display-env setup, imported first by each tool

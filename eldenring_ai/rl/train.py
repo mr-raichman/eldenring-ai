@@ -6,6 +6,7 @@ the latest checkpoint, and runs the learn loop.
 
 import glob
 import os
+import time
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
@@ -105,8 +106,14 @@ def train():
     latest = find_latest_checkpoint()
 
     if latest is None:
+        # Fresh run: drop the run-scoped stats and archive the previous run's records
+        # (timestamped) so episodes from different runs never mix in one file.
         if os.path.exists(PERSIST_FILE):
             os.remove(PERSIST_FILE)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        for record in (paths.EPISODE_RECORDS, paths.STEP_RECORDS):
+            if record.exists():
+                record.rename(record.with_name(f"{record.stem}.{stamp}{record.suffix}"))
 
     env = EldenRingEnv()
 
