@@ -123,15 +123,21 @@ def train():
         model.gamma         = config.GAMMA
         model.n_epochs      = config.N_EPOCHS
         model.batch_size    = config.BATCH_SIZE
+        model.ent_coef      = config.ENT_COEF
+        model.target_kl     = config.TARGET_KL
+        # The learning-rate schedule is fixed at construction; resuming keeps the
+        # loaded schedule. Every experiment here is a fresh run, so this is moot.
     else:
         model = PPO(
             policy="MultiInputPolicy",
             env=env,
-            learning_rate=config.LEARNING_RATE,
+            learning_rate=lambda progress_remaining: config.LEARNING_RATE * progress_remaining,
             n_steps=config.N_STEPS,
             batch_size=config.BATCH_SIZE,
             n_epochs=config.N_EPOCHS,
             gamma=config.GAMMA,
+            ent_coef=config.ENT_COEF,
+            target_kl=config.TARGET_KL,
             policy_kwargs=POLICY_KWARGS,
             verbose=1,
             tensorboard_log=str(paths.LOGS_DIR),

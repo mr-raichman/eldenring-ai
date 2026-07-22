@@ -3,7 +3,7 @@ vision.py - screen-capture, frame-stacking, and boss-HP vision parameters.
 """
 
 FRAME_STACK = 12
-FRAME_SKIP = 1
+FRAME_SKIP = 2
 OBSERVATION_SHAPE = (256, 256, FRAME_STACK)  # 1280x720
 
 WAYLAND_OUTPUT = "HDMI-A-1"
