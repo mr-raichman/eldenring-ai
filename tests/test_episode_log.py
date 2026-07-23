@@ -111,6 +111,18 @@ def test_jsonl_row_shape(tmp_path, monkeypatch):
     assert "actions" in row and "ppo" in row
 
 
+def test_jsonl_handles_numpy_values(tmp_path, monkeypatch):
+    # SB3 logs PPO stats as numpy float32; the record write must not choke on them.
+    import numpy as np
+    rec = make_recorder(tmp_path, monkeypatch)
+    _feed_mixed(rec)
+    ppo = {"explained_variance": np.float32(0.62), "value_loss": np.float64(0.3)}
+    rec.write_episode(context(episode=1, ppo=ppo))
+    row = json.loads(paths.EPISODE_RECORDS.read_text().splitlines()[0])
+    assert isinstance(row["ppo"]["explained_variance"], float)
+    assert row["ppo"]["explained_variance"] == pytest.approx(0.62, abs=1e-4)
+
+
 def test_step_csv_keeps_rolling_window(tmp_path, monkeypatch):
     rec = make_recorder(tmp_path, monkeypatch, k=3)
     for i in range(1, 6):

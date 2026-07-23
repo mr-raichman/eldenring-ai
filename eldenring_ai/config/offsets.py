@@ -26,3 +26,8 @@ PTR4_STAMINA_MAX = 0x158
 
 # Area id that identifies the Margit arena.
 MARGIT_AREA_ID = 4
+
+# Area id at the pre-Margit grace. After a death the respawn transiently reports the
+# arena id while loading out of the death location, so the reset workflow waits for
+# this settled value before walking to the fog (else it can start an episode outside).
+BEFORE_MARGIT_AREA_ID = 68

@@ -68,7 +68,6 @@ COUNTERS = [
     Counter("total_deaths",           "Deaths",      "counters/deaths"),
     Counter("total_fall_deaths",      "Falls",       "counters/fall_deaths"),
     Counter("total_kills",            "Victories",   "counters/victories"),
-    Counter("total_truncations",      "Truncations", "counters/truncations"),
     Counter("total_grace_recoveries", "Graces",      "counters/graces"),
 ]
 

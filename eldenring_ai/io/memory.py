@@ -16,6 +16,7 @@ from eldenring_ai.config.vision import BOSS_HP_REGION, BOSS_HP_CAP_FULL
 from eldenring_ai.config.offsets import (
     _WORLD_CHR_MAN_AOB,
     MARGIT_AREA_ID,
+    BEFORE_MARGIT_AREA_ID,
     WCM_TO_PTR1,
     PTR1_TO_PTR2,
     PTR2_TO_PTR3,
@@ -332,6 +333,12 @@ class GameMemory:
         return (
             self._last_ptr4 is not None
             and self._last_area_id == MARGIT_AREA_ID
+        )
+
+    def is_before_margit(self):
+        return (
+            self._last_ptr4 is not None
+            and self._last_area_id == BEFORE_MARGIT_AREA_ID
         )
 
     def read_player_hp(self):

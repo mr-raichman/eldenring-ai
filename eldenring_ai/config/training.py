@@ -28,9 +28,8 @@ DODGE_WINDOW = 10
 GREEDY_WINDOW = 5
 MULTIHIT_WINDOW = 6
 
-# Episode
+# Episode (unbounded: episodes end only on death or victory, never a step limit)
 HISTORY_LENGTH = 24
-MAX_STEPS_PER_EPISODE = 500
 BOSS_DEFEAT_HP_THRESHOLD = 0.005
 
 # PPO

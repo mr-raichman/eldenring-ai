@@ -11,6 +11,8 @@ import json
 import time
 from collections import deque
 
+import numpy as np
+
 from eldenring_ai import config
 from eldenring_ai.config import paths
 from eldenring_ai.ui.metrics import EVENT_CATEGORIES, REWARD_COMPONENTS
@@ -20,6 +22,24 @@ _STEP_CSV_HEADER = [
     "player_hp", "boss_hp", "stamina",
     "boss_reward", "player_punish", "reward", "events",
 ]
+
+
+def _json_default(o):
+    """Coerce numpy scalars/arrays (e.g. PPO stats logged as float32) to JSON-native
+    types so a stray numpy value never breaks the record write."""
+    if isinstance(o, np.generic):
+        return o.item()
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
+def log_event(message):
+    """Append a timestamped line to the run's event log, used instead of printing so
+    the live dashboard stays clean (recovery events, aborts, reporting errors)."""
+    paths.EVENT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(paths.EVENT_LOG, "a") as f:
+        f.write(f"{time.strftime('%H:%M:%S')} {message}\n")
 
 
 class EpisodeRecorder:
@@ -104,7 +124,7 @@ class EpisodeRecorder:
 
         row = self._aggregate_row(context)
         with open(paths.EPISODE_RECORDS, "a") as f:
-            f.write(json.dumps(row) + "\n")
+            f.write(json.dumps(row, default=_json_default) + "\n")
 
         episode = context["episode"]
         self._recent_episodes.append([[episode] + r for r in self._step_rows])

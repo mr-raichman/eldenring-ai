@@ -19,6 +19,7 @@ from eldenring_ai.config import paths
 from eldenring_ai.ui import shared_stats
 from eldenring_ai.rl.features_extractor import EldenRingExtractor
 from eldenring_ai.rl.environment import EldenRingEnv, PERSIST_FILE
+from eldenring_ai.ui.dashboard import training_live
 
 POLICY_KWARGS = dict(
     features_extractor_class=EldenRingExtractor,
@@ -97,6 +98,14 @@ def find_latest_checkpoint():
     return final_path if os.path.exists(final_path) else None
 
 
+def _latest_run_dir():
+    """The most recent run directory under data/runs/, or None."""
+    if not paths.RUNS_DIR.exists():
+        return None
+    dirs = [d for d in paths.RUNS_DIR.iterdir() if d.is_dir()]
+    return max(dirs, key=lambda d: d.stat().st_mtime) if dirs else None
+
+
 def train():
     print("═══════ STARTING TRAINING ═══════\n")
 
@@ -106,14 +115,15 @@ def train():
     latest = find_latest_checkpoint()
 
     if latest is None:
-        # Fresh run: drop the run-scoped stats and archive the previous run's records
-        # (timestamped) so episodes from different runs never mix in one file.
+        # Fresh run: clean stats and start a new timestamped run directory.
         if os.path.exists(PERSIST_FILE):
             os.remove(PERSIST_FILE)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        for record in (paths.EPISODE_RECORDS, paths.STEP_RECORDS):
-            if record.exists():
-                record.rename(record.with_name(f"{record.stem}.{stamp}{record.suffix}"))
+        run_dir = paths.RUNS_DIR / time.strftime("%Y-%m-%d_%H-%M-%S")
+    else:
+        # Resume: keep writing into the most recent run directory.
+        run_dir = _latest_run_dir() or (paths.RUNS_DIR / time.strftime("%Y-%m-%d_%H-%M-%S"))
+    run_dir.mkdir(parents=True, exist_ok=True)
+    paths.use_run_dir(run_dir)
 
     env = EldenRingEnv()
 
@@ -161,18 +171,21 @@ def train():
         name_prefix=CHECKPOINT_PREFIX,
     )
 
-    model.learn(
-        total_timesteps=config.TOTAL_TIMESTEPS,
-        callback=[
-            checkpoint_callback,
-            StatsLoggerCallback(),
-            StopOnVictoryCallback(
-                save_path=os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}victory"),
-            ),
-        ],
-        progress_bar=True,
-        reset_num_timesteps=False,
-    )
+    # progress_bar is off: the live dashboard is our single Rich Live display, and two
+    # would conflict on one stdout. Progress/ETA now live in the dashboard header.
+    with training_live():
+        model.learn(
+            total_timesteps=config.TOTAL_TIMESTEPS,
+            callback=[
+                checkpoint_callback,
+                StatsLoggerCallback(),
+                StopOnVictoryCallback(
+                    save_path=os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}victory"),
+                ),
+            ],
+            progress_bar=False,
+            reset_num_timesteps=False,
+        )
 
     final_path = os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}final")
     model.save(final_path)

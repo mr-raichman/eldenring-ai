@@ -21,7 +21,7 @@ from eldenring_ai.io.memory import GameMemory, get_game_state, find_pid, reset_b
 from eldenring_ai.rl.reward import compute_reward
 from eldenring_ai.ui import shared_stats
 from eldenring_ai.ui.dashboard import _print_dashboard
-from eldenring_ai.ui.episode_log import EpisodeRecorder
+from eldenring_ai.ui.episode_log import EpisodeRecorder, log_event
 from eldenring_ai.ui.metrics import (
     COUNTERS,
     DERIVED_MEASURES,
@@ -136,6 +136,7 @@ class EldenRingEnv(gymnasium.Env):
 
         self.ep_steps = 0
         self._episode_outcome = None
+        self._outside_arena_steps = 0
 
         self._stop_requested = False
 
@@ -147,7 +148,6 @@ class EldenRingEnv(gymnasium.Env):
         self.total_deaths = 0
         self.total_fall_deaths = 0
         self.total_kills = 0
-        self.total_truncations = 0
         self.total_grace_recoveries = 0
 
         self.training_actions = {action: 0 for action in input.ACTIONS}
@@ -268,6 +268,24 @@ class EldenRingEnv(gymnasium.Env):
                 {},
             )
 
+        # Self-heal: a live episode is always in the arena (area_id == MARGIT_AREA_ID).
+        # If several consecutive steps read otherwise, the episode started or drifted
+        # outside (a transient area_id at reset) - abort so reset() retries the fog walk.
+        if self.memory._last_area_id == config.MARGIT_AREA_ID:
+            self._outside_arena_steps = 0
+        else:
+            self._outside_arena_steps += 1
+            if self._outside_arena_steps >= config.OUTSIDE_ARENA_LIMIT:
+                log_event(f"step: outside arena (area_id={self.memory._last_area_id}) - aborting episode")
+                self._episode_outcome = "aborted"
+                remaining = config.ACTION_LOCK_DURATION - (time.time() - start_lock)
+                if remaining > 0:
+                    time.sleep(remaining)
+                return (
+                    self._last_obs if self._last_obs is not None else self._zero_obs(),
+                    0.0, True, False, {},
+                )
+
         # reward (prev values captured before they are advanced below, for records)
         prev_hp_at_step = self.prev_player_hp
         prev_stamina_at_step = self.prev_stamina
@@ -300,12 +318,8 @@ class EldenRingEnv(gymnasium.Env):
             self._episode_outcome = "kill"
             self._stop_requested = True
 
-        if self.ep_steps >= config.MAX_STEPS_PER_EPISODE and not terminated:
-            self.total_truncations += 1
-            truncated = True
-            self._episode_outcome = "timeout"
-        else:
-            truncated = False
+        # Unbounded episodes: only death or victory ends one, never a step limit.
+        truncated = False
 
         # update history buffers and previous-step values
         self._hp_history.append(player_hp)
@@ -380,6 +394,19 @@ class EldenRingEnv(gymnasium.Env):
             return True
         return False
 
+    def _confirm_in_arena(self, interval=0.1):
+        """Require area_id == MARGIT_AREA_ID continuously for ARENA_CONFIRM_SECONDS. A
+        real arena entry stays put until death/win; a transient (respawn or fog-load
+        flicker) does not, so a longer window excludes it."""
+        deadline = time.time() + config.ARENA_CONFIRM_SECONDS
+        while time.time() < deadline:
+            self.memory.refresh()
+            if not self.memory.is_in_boss_arena():
+                log_event(f"reset: arena confirm failed (area_id={self.memory._last_area_id})")
+                return False
+            time.sleep(interval)
+        return True
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -402,10 +429,14 @@ class EldenRingEnv(gymnasium.Env):
                 elif m.better == "min":
                     self._metric_best[m.key] = min(best, v)
                 self._metric_window[m.key].append(v)
-            self._publish_episode_metrics(values)
-            self._recorder.write_episode(self._build_episode_context())
-            if not config.DEBUG_MODE:
-                _print_dashboard(self)
+            # Reporting (TB metrics, records, dashboard) must never kill a long run.
+            try:
+                self._publish_episode_metrics(values)
+                self._recorder.write_episode(self._build_episode_context())
+                if not config.DEBUG_MODE:
+                    _print_dashboard(self)
+            except Exception as exc:
+                log_event(f"reporting: episode {self.episode_count} skipped: {exc}")
 
         self._save_persist()
 
@@ -424,13 +455,22 @@ class EldenRingEnv(gymnasium.Env):
             if recovered:
                 subprocess.run(["hyprctl", "dispatch", "movecursor", "9999", "9999"])
 
+            # Wait until the player has settled at the pre-Margit grace before walking
+            # to the fog. A death respawn transiently reports the arena id while loading
+            # out of the death location; acting on it would start an episode outside.
+            self._wait_for_condition(self.memory.is_before_margit, 20)
+
             input.walk_to_fog(self.gamepad)
 
-            if not self._wait_for_condition(self.memory.is_in_boss_arena, 2):
-                self.total_grace_recoveries += 1
-                input.use_grace_return_item(self.gamepad)
-            else:
+            # Only start once the arena is reached AND stable: a single is_in_boss_arena
+            # read can be a transient during the fog/loading transition. Log the area_id
+            # we gate on so a stale offset/value (e.g. after a game patch) is visible.
+            if self._wait_for_condition(self.memory.is_in_boss_arena, 2) and self._confirm_in_arena():
                 break
+
+            log_event(f"reset: not in arena (area_id={self.memory._last_area_id}); grace return")
+            self.total_grace_recoveries += 1
+            input.use_grace_return_item(self.gamepad)
 
         reset_boss_hp_smoothing()
 

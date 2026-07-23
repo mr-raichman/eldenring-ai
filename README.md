@@ -77,10 +77,11 @@ uv run python tools/capture_frames.py  # dump the AI frame stack
 uv run pytest
 ```
 
-A per-episode dashboard prints when each episode ends. Records are written under
-`data/`: `episode_records.jsonl` (one row per episode - reward composition, event
-rates, derived quality measures, PPO snapshot) and `step_records.csv` (per-step
-reward and reason for the most recent episodes).
+A live dashboard updates in place at each episode end. Each run writes its data to
+its own folder under `data/runs/<timestamp>/`: `episode_records.jsonl` (one row per
+episode - reward composition, event rates, derived quality measures, PPO snapshot),
+`step_records.csv` (per-step reward and reason for the most recent episodes), and
+`events.log` (recovery events, aborts). A resume continues the latest run's folder.
 
 Training auto-recovers on crashes and checkpoints periodically to `models/`; TensorBoard
 logs go to `logs/`. Watch the live graphs (reward, Margit HP, steps, PPO metrics) with:

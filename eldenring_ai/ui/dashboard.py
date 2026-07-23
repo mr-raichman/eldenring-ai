@@ -9,10 +9,12 @@ ui/metrics.py. Long-run trends live in TensorBoard (tensorboard --logdir logs).
 """
 
 import time
+from contextlib import contextmanager
 
 import plotext as plt
 from rich import box
 from rich.console import Console, Group
+from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -31,6 +33,28 @@ from eldenring_ai.ui.metrics import (
 # display and two Live displays on one stdout conflict.
 _console = Console()
 
+# Borderless panel box: keeps the title and padding, drops the frame lines.
+_BLANK = box.Box("    \n" * 8)
+
+# The live display, set while training is running (see training_live). When set, the
+# dashboard updates it in place; otherwise it prints (standalone / tests).
+_live = None
+
+
+@contextmanager
+def training_live():
+    """Wrap training so the dashboard updates in place instead of scrolling. This
+    replaces SB3's progress bar - two Rich Live displays on one stdout conflict, so
+    SB3's progress_bar must be off. Stray prints are shown above the live region
+    (Live redirects stdout by default)."""
+    global _live
+    with Live(Text("Starting training..."), console=_console, refresh_per_second=4) as live:
+        _live = live
+        try:
+            yield
+        finally:
+            _live = None
+
 _PPO_DISPLAY = [
     ("train/explained_variance",   "Explained var"),
     ("train/entropy_loss",         "Entropy loss"),
@@ -48,6 +72,7 @@ _OUTCOME = {
     "fall_death":   ("FALL DEATH", "bold red"),
     "combat_death": ("DEATH",      "bold yellow"),
     "timeout":      ("TIMEOUT",    "bold dim"),
+    "aborted":      ("ABORTED",    "bold dim"),
 }
 
 
@@ -80,18 +105,22 @@ def _header_panel(self, training_time, steps_per_second, training_steps):
     label, style = _OUTCOME.get(self._episode_outcome, ("-", "bold"))
     elapsed = time.time() - getattr(self, "start_ep_time", time.time())
     counters = "    ".join(f"{c.label} [b]{getattr(self, c.key)}[/]" for c in COUNTERS)
+
+    total = config.TOTAL_TIMESTEPS
+    pct = 100 * training_steps / total if total else 0.0
+    avg_rate = training_steps / max(training_time, 1e-6)  # includes reset overhead
+    eta = _fmt_time((total - training_steps) / avg_rate) if avg_rate > 0 and training_steps < total else "-"
+
     body = (
+        f"[bold]ELDEN RING  -  Episode {self.episode_count}  -  [/][{style}]{label}[/]\n"
         f"Training [b]{_fmt_time(training_time)}[/]     "
-        f"Steps [b]{training_steps:,}[/]     "
+        f"Steps [b]{training_steps:,}[/] / {total:,} ([b]{pct:.1f}%[/])     "
+        f"ETA [b]{eta}[/]     "
         f"Steps/sec [b]{steps_per_second:.1f}[/]     "
         f"Episode [b]{elapsed:.0f}s[/] / [b]{self.ep_steps}[/] steps\n"
         f"{counters}"
     )
-    title = Text.assemble(
-        (f"ELDEN RING  -  Episode {self.episode_count}  -  ", "bold"),
-        (label, style),
-    )
-    return Panel(body, title=title, title_align="left", box=box.HEAVY)
+    return Panel(body, box=_BLANK)
 
 
 def _metrics_panel(self, win):
@@ -100,7 +129,7 @@ def _metrics_panel(self, win):
     for m in EPISODE_METRICS:
         mean = sum(self._metric_window[m.key]) / win
         stats.add_row(m.label, _fmt(values[m.key], m.fmt), _fmt(self._metric_best[m.key], m.fmt), _fmt(mean, m.fmt))
-    return Panel(stats, title="Episode", title_align="left", box=box.HEAVY)
+    return Panel(stats, box=_BLANK)
 
 
 def _actions_panel(self):
@@ -117,7 +146,7 @@ def _actions_panel(self):
         else:
             row += ["", ""]
         t.add_row(*row)
-    return Panel(t, title="Actions", title_align="left", box=box.HEAVY)
+    return Panel(t, box=_BLANK)
 
 
 def _events_panel(self):
@@ -135,7 +164,7 @@ def _events_panel(self):
     grid.add_column(width=4)
     grid.add_column(ratio=1)
     grid.add_row(events, "", quality)
-    return Panel(grid, title="Events & quality", title_align="left", box=box.HEAVY)
+    return Panel(grid, box=_BLANK)
 
 
 def _ppo_panel():
@@ -143,7 +172,7 @@ def _ppo_panel():
     for key, label in _PPO_DISPLAY:
         value = shared_stats.ppo_stats.get(key) if shared_stats.ppo_stats else None
         ppo.add_row(label, _fmt_ppo(value))
-    return Panel(ppo, title="PPO (training)", title_align="left", box=box.HEAVY)
+    return Panel(ppo, box=_BLANK)
 
 
 def _info_row(self, win):
@@ -190,7 +219,7 @@ def _chart_panel(self, width, height):
     lines = plt.build().split("\n")
     while lines and not lines[-1].strip():
         lines.pop()
-    return Panel(Text.from_ansi("\n".join(lines)), title="Episode trace", title_align="left", box=box.HEAVY)
+    return Panel(Text.from_ansi("\n".join(lines)), box=_BLANK)
 
 
 def _print_dashboard(self):
@@ -202,19 +231,19 @@ def _print_dashboard(self):
 
     header = _header_panel(self, training_time, steps_per_second, training_steps)
     info = _info_row(self, win)
+    renderables = [header, info]
 
-    if len(self._recorder.step_rewards) < 2:
-        _console.print(Group(header, info))
+    if len(self._recorder.step_rewards) >= 2:
+        # Measure the info block (render_lines is Live-safe, unlike capture) and give
+        # the rest of the terminal height to the chart.
+        used = len(_console.render_lines(Group(header, info), _console.options.update(height=None)))
+        chart_height = max(14, _console.size.height - used - 4)
+        chart_width = _console.size.width - 4
+        renderables.append(_chart_panel(self, chart_width, chart_height))
+
+    group = Group(*renderables)
+    if _live is not None:
+        _live.update(group)
+    else:
+        _console.print(group)
         _console.print()
-        return
-
-    # Measure the info block and give the rest of the terminal height to the chart.
-    with _console.capture() as cap:
-        _console.print(Group(header, info))
-    used = len(cap.get().rstrip("\n").split("\n"))
-    chart_height = max(14, _console.size.height - used - 3)
-    chart_width = _console.size.width - 4
-
-    chart = _chart_panel(self, chart_width, chart_height)
-    _console.print(Group(header, info, chart))
-    _console.print()
