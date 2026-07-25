@@ -366,7 +366,14 @@ class EldenRingEnv(gymnasium.Env):
             return False
 
     def _launch_and_recover_game(self):
-        subprocess.Popen(["steam", f"steam://rungameid/{config.ELDEN_RING_APP_ID}"])
+        # Detached session + silenced output: the game outlives a Ctrl+C on training
+        # (it is not in our process group) and Steam's chatter stays off the terminal.
+        subprocess.Popen(
+            ["steam", f"steam://rungameid/{config.ELDEN_RING_APP_ID}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
         while True:
             self.memory.pid = find_pid()
