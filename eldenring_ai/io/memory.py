@@ -245,6 +245,17 @@ class GameMemory:
             return False
         return True
 
+    def is_alive(self):
+        """True if the game process exists and is not a zombie."""
+        if self.pid is None:
+            return False
+        try:
+            with open(f"/proc/{self.pid}/stat") as f:
+                state = f.read().rsplit(")", 1)[1].split()[0]
+            return state != "Z"
+        except (FileNotFoundError, ProcessLookupError):
+            return False
+
     def resolve_static_ptr(self):
         if self.pid is None:
             return False

@@ -38,6 +38,9 @@ logs/*
 # Interactive capture dumps
 tests/captures/
 
+# Generated knowledge graph (rebuildable; .graphifyignore stays tracked)
+graphify-out/
+
 # OS files
 .DS_Store
 

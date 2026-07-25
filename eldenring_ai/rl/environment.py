@@ -91,7 +91,7 @@ class EldenRingEnv(gymnasium.Env):
         self.action_space = gymnasium.spaces.Discrete(input.N_ACTIONS)
 
         self.gamepad = input.create_controller()
-        time.sleep(2)
+        time.sleep(config.CONTROLLER_SETTLE_DELAY)
 
         self.memory = GameMemory()
         self.memory.connect()
@@ -112,7 +112,7 @@ class EldenRingEnv(gymnasium.Env):
                     return True
             except Exception:
                 pass
-            time.sleep(0.1)
+            time.sleep(config.CONDITION_POLL_INTERVAL)
         return False
 
     def _initialize(self):
@@ -232,7 +232,7 @@ class EldenRingEnv(gymnasium.Env):
     def step(self, action):
         start_lock = time.time()
 
-        if not self._is_game_running():
+        if not self.memory.is_alive():
             return (
                 self._last_obs if self._last_obs is not None else self._zero_obs(),
                 0.0, True, False, {},
@@ -354,17 +354,6 @@ class EldenRingEnv(gymnasium.Env):
         self._last_obs = obs_dict
         return obs_dict, reward, terminated, truncated, {}
 
-    def _is_game_running(self):
-        pid = getattr(self.memory, "pid", None)
-        if not pid:
-            return False
-        try:
-            with open(f"/proc/{pid}/stat") as f:
-                state = f.read().rsplit(")", 1)[1].split()[0]
-            return state != "Z"
-        except (FileNotFoundError, ProcessLookupError):
-            return False
-
     def _launch_and_recover_game(self):
         # Detached session + silenced output: the game outlives a Ctrl+C on training
         # (it is not in our process group) and Steam's chatter stays off the terminal.
@@ -377,13 +366,13 @@ class EldenRingEnv(gymnasium.Env):
 
         while True:
             self.memory.pid = find_pid()
-            if self._is_game_running():
+            if self.memory.is_alive():
                 break
-            time.sleep(3)
+            time.sleep(config.GAME_LAUNCH_POLL_INTERVAL)
 
         self.memory._world_chr_man_ptr = None
         while not self.memory.resolve_static_ptr():
-            time.sleep(1)
+            time.sleep(config.PTR_RESOLVE_POLL_INTERVAL)
 
         while not self.memory.world_loaded():
             input.press_menu_confirm(self.gamepad)
@@ -393,15 +382,15 @@ class EldenRingEnv(gymnasium.Env):
             self.memory.refresh()
             if self.memory.is_player_ready():
                 return
-            time.sleep(0.2)
+            time.sleep(config.PLAYER_READY_POLL_INTERVAL)
 
     def _ensure_game_running(self):
-        if not self._is_game_running():
+        if not self.memory.is_alive():
             self._launch_and_recover_game()
             return True
         return False
 
-    def _confirm_in_arena(self, interval=0.1):
+    def _confirm_in_arena(self, interval=config.ARENA_CONFIRM_INTERVAL):
         """Require area_id == MARGIT_AREA_ID continuously for ARENA_CONFIRM_SECONDS. A
         real arena entry stays put until death/win; a transient (respawn or fog-load
         flicker) does not, so a longer window excludes it."""
@@ -454,10 +443,10 @@ class EldenRingEnv(gymnasium.Env):
         while True:
             recovered = self._ensure_game_running()
             if not recovered:
-                self._wait_for_condition(self.memory.loading_screen, 10)
-                self._wait_for_condition(self.memory.is_player_ready, 15)
+                self._wait_for_condition(self.memory.loading_screen, config.LOADING_SCREEN_TIMEOUT)
+                self._wait_for_condition(self.memory.is_player_ready, config.PLAYER_READY_TIMEOUT)
 
-            time.sleep(1)
+            time.sleep(config.POST_RECOVERY_DELAY)
 
             if recovered:
                 subprocess.run(["hyprctl", "dispatch", "movecursor", "9999", "9999"])
@@ -465,14 +454,14 @@ class EldenRingEnv(gymnasium.Env):
             # Wait until the player has settled at the pre-Margit grace before walking
             # to the fog. A death respawn transiently reports the arena id while loading
             # out of the death location; acting on it would start an episode outside.
-            self._wait_for_condition(self.memory.is_before_margit, 20)
+            self._wait_for_condition(self.memory.is_before_margit, config.BEFORE_MARGIT_TIMEOUT)
 
             input.walk_to_fog(self.gamepad)
 
             # Only start once the arena is reached AND stable: a single is_in_boss_arena
             # read can be a transient during the fog/loading transition. Log the area_id
             # we gate on so a stale offset/value (e.g. after a game patch) is visible.
-            if self._wait_for_condition(self.memory.is_in_boss_arena, 2) and self._confirm_in_arena():
+            if self._wait_for_condition(self.memory.is_in_boss_arena, config.ARENA_ENTER_TIMEOUT) and self._confirm_in_arena():
                 break
 
             log_event(f"reset: not in arena (area_id={self.memory._last_area_id}); grace return")
@@ -490,7 +479,7 @@ class EldenRingEnv(gymnasium.Env):
             except Exception:
                 self.capture.close()
                 self.capture = ScreenCapture()
-                time.sleep(1)
+                time.sleep(config.CAPTURE_RETRY_DELAY)
 
         self.prev_player_hp = player_hp
         self.prev_boss_hp = boss_hp

@@ -70,7 +70,7 @@ class ScreenCapture:
              "devices=1", 'card_label="capture"', "exclusive_caps=1"],
             capture_output=True,
         )
-        time.sleep(1)
+        time.sleep(config.DEVICE_SETTLE_DELAY)
 
         if not os.path.exists(self._device):
             raise RuntimeError(
@@ -82,7 +82,7 @@ class ScreenCapture:
 
     def _launch_wf_recorder(self):
         subprocess.run(["pkill", "-9", "-x", "wf-recorder"], capture_output=True)
-        time.sleep(0.5)
+        time.sleep(config.RECORDER_KILL_DELAY)
 
         env = os.environ.copy()
         env.setdefault("WAYLAND_DISPLAY", "wayland-1")
@@ -97,7 +97,7 @@ class ScreenCapture:
             stderr=self._wf_log,
             env=env,
         )
-        time.sleep(2)
+        time.sleep(config.RECORDER_START_DELAY)
 
         if self._wf_recorder_proc.poll() is not None:
             self._wf_log.flush()

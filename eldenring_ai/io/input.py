@@ -10,6 +10,7 @@ from collections import namedtuple
 from evdev import AbsInfo, UInput
 from evdev import ecodes as e
 
+from eldenring_ai import config
 from eldenring_ai.config import PRESS_DURATION
 
 _VENDOR = 0x045E  # Microsoft
@@ -196,10 +197,10 @@ def walk_to_fog(gamepad):
     gamepad.write(e.EV_ABS, e.ABS_Y, -STICK_MAX)  # forward
     gamepad.write(e.EV_KEY, e.BTN_B, 1)  # sprint
     gamepad.syn()
-    _camera_right(gamepad, 0.3, 30000)
-    time.sleep(2)
-    _camera_right(gamepad, 0.5, 20000)
-    time.sleep(1.75)
+    _camera_right(gamepad, config.FOG_TURN1_DURATION, config.FOG_TURN1_SPEED)
+    time.sleep(config.FOG_SPRINT_LEG1_DURATION)
+    _camera_right(gamepad, config.FOG_TURN2_DURATION, config.FOG_TURN2_SPEED)
+    time.sleep(config.FOG_SPRINT_LEG2_DURATION)
     gamepad.write(e.EV_ABS, e.ABS_Y, 0)
     gamepad.write(e.EV_KEY, e.BTN_B, 0)
     # Enter fog gate
@@ -208,7 +209,7 @@ def walk_to_fog(gamepad):
     time.sleep(PRESS_DURATION)
     gamepad.write(e.EV_KEY, e.BTN_Y, 0)
     gamepad.syn()
-    time.sleep(3.5)
+    time.sleep(config.FOG_GATE_LOAD_DELAY)
     # Lock on
     gamepad.write(e.EV_KEY, e.BTN_THUMBR, 1)
     gamepad.syn()
@@ -221,25 +222,25 @@ def use_grace_return_item(gamepad):
     # Hold Y to open pouch
     gamepad.write(e.EV_KEY, e.BTN_Y, 1)
     gamepad.syn()
-    time.sleep(0.5)
+    time.sleep(config.POUCH_OPEN_DELAY)
     # D-pad up to highlight the slot
     gamepad.write(e.EV_ABS, e.ABS_HAT0Y, -1)
     gamepad.syn()
     time.sleep(PRESS_DURATION)
     gamepad.write(e.EV_ABS, e.ABS_HAT0Y, 0)
     gamepad.syn()
-    time.sleep(0.1)
+    time.sleep(config.POUCH_HIGHLIGHT_DELAY)
     # Release Y: activates the selected slot and opens confirmation
     gamepad.write(e.EV_KEY, e.BTN_Y, 0)
     gamepad.syn()
-    time.sleep(0.25)
+    time.sleep(config.POUCH_RELEASE_DELAY)
     # D-pad left to "Yes"
     gamepad.write(e.EV_ABS, e.ABS_HAT0X, -1)
     gamepad.syn()
     time.sleep(PRESS_DURATION)
     gamepad.write(e.EV_ABS, e.ABS_HAT0X, 0)
     gamepad.syn()
-    time.sleep(0.25)
+    time.sleep(config.POUCH_CONFIRM_DELAY)
     # A to confirm
     gamepad.write(e.EV_KEY, e.BTN_A, 1)
     gamepad.syn()

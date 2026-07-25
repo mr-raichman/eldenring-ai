@@ -1,0 +1,4 @@
+# Superseded and one-off code, kept for reference and never imported.
+# Its duplicate EldenRingEnv/GameMemory definitions shadow the live ones
+# and make the graph resolve live callers to archived classes.
+archive/
