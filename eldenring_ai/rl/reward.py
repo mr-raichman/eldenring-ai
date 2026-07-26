@@ -29,13 +29,14 @@ def compute_reward(
             player_punish *= config.GREEDY_PENALTY
             events.append("GREEDY_PENALTY")
 
-        # PLAYER MULTIPLE HIT (current hit counts, plus recent hits in the window)
+        # PLAYER MULTIPLE HIT (current hit counts, plus recent hits in the window).
         recent_hp = list(hp_history)[-config.MULTIHIT_WINDOW:]
         hit_count = 1 + sum(
             1 for i in range(1, len(recent_hp)) if recent_hp[i - 1] - recent_hp[i] > 0
         )
         player_punish *= hit_count
-        events.append(f"MULTIPLE_HIT_PENALTY(x{hit_count})")
+        if hit_count > 1:
+            events.append(f"MULTIPLE_HIT_PENALTY(x{hit_count})")
 
         # PLAYER DEATH: distinguish a fall (loses more HP than Margit can deal in one
         # step) from a combat death, which is left to the hit logic above.
@@ -44,7 +45,7 @@ def compute_reward(
                 player_punish = config.FALL_DEATH_PENALTY
                 events.append("FALL_DEATH")
             else:
-                player_punish = max(player_punish, config.COMBAT_DEATH_PENALTY)
+                player_punish = max(player_punish, config.MIN_COMBAT_DEATH_PENALTY)
                 events.append("DEATH")
     else:
         player_punish = 0.0

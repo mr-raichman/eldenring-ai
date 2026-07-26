@@ -69,7 +69,7 @@ def test_isolated_hit_is_punished():
     )
     assert player_punish == pytest.approx(0.3 * config.PLAYER_PARAMETER)
     assert reward < 0
-    assert "MULTIPLE_HIT_PENALTY(x1)" in events
+    assert not any(e.startswith("MULTIPLE_HIT_PENALTY") for e in events)
     assert any(e.startswith("HIT_TAKEN") for e in events)
 
 
@@ -88,7 +88,7 @@ def test_combo_escalates():
     assert punish_combo == pytest.approx(2 * punish_isolated)
 
 
-def test_trade_is_net_negative():
+def test_greedy_penalty_multiplies_punish():
     # Boss was damaged within the greedy window, then the player takes a hit.
     boss_hist = [0] * HISTORY
     boss_hist[-1] = 1
@@ -97,8 +97,13 @@ def test_trade_is_net_negative():
     )
     assert "GREEDY_PENALTY" in events
     assert player_punish == pytest.approx(0.3 * config.PLAYER_PARAMETER * config.GREEDY_PENALTY)
-    # A hit dealt is never worth a hit received: the trade outweighs a full boss hit.
-    assert reward < -config.BOSS_PARAMETER
+    assert reward < 0
+    # Same hit outside the greedy window costs GREEDY_PENALTY times less.
+    _, punish_clean, _, events_clean = compute_reward(
+        **neutral(player_hp=0.7, prev_player_hp=1.0)
+    )
+    assert "GREEDY_PENALTY" not in events_clean
+    assert player_punish == pytest.approx(config.GREEDY_PENALTY * punish_clean)
 
 
 def test_fall_death_uses_fixed_penalty():
@@ -106,8 +111,8 @@ def test_fall_death_uses_fixed_penalty():
     _, player_punish, reward, events = compute_reward(
         **neutral(player_hp=0.0, prev_player_hp=0.8)
     )
-    assert player_punish == pytest.approx(config.FALL_DEATH_PENALTY)
-    assert reward == pytest.approx(-config.FALL_DEATH_PENALTY)
+    assert player_punish == pytest.approx(config.MIN_FALL_DEATH_PENALTY)
+    assert reward == pytest.approx(-config.MIN_FALL_DEATH_PENALTY)
     assert "FALL_DEATH" in events
 
 
@@ -117,9 +122,9 @@ def test_combat_death_uses_hit_logic_with_floor():
         **neutral(player_hp=0.0, prev_player_hp=0.3)
     )
     vuln = (2.0 - 0.3) ** config.PLAYER_VULNERABILITY_EXP
-    expected = max(0.3 * vuln * config.PLAYER_PARAMETER, config.COMBAT_DEATH_PENALTY)
+    expected = max(0.3 * vuln * config.PLAYER_PARAMETER, config.MIN_COMBAT_DEATH_PENALTY)
     assert player_punish == pytest.approx(expected)
-    assert player_punish >= config.COMBAT_DEATH_PENALTY
+    assert player_punish >= config.MIN_COMBAT_DEATH_PENALTY
     assert "DEATH" in events
 
 

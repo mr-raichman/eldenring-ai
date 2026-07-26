@@ -35,9 +35,9 @@ def context(episode=1, **kw):
 
 
 def _feed_mixed(rec):
-    """A boss hit, a hit taken, an idle step-penalty, a zero-stamina step, a kill."""
+    """A boss hit, a combo hit taken, an idle step-penalty, a zero-stamina step, a kill."""
     rec.record_step(0, "Light Attack", 1.0, 0.9, 0.8, 1.0, 0.8, 2.0, 0.0, 2.0, ["BOSS_HIT(deduction=1.00)"])
-    rec.record_step(1, "No Action", 0.7, 0.9, 0.7, 1.0, 0.7, 0.0, 1.5, -1.5, ["HIT_TAKEN(vuln=1.00)", "MULTIPLE_HIT_PENALTY(x1)"])
+    rec.record_step(1, "No Action", 0.7, 0.9, 0.7, 1.0, 0.7, 0.0, 1.5, -1.5, ["HIT_TAKEN(vuln=1.00)", "MULTIPLE_HIT_PENALTY(x2)"])
     rec.record_step(2, "Move Left", 0.7, 0.9, 0.6, 0.7, 0.6, 0.0, 0.0, -config.STEP_PENALTY, ["STEP_PENALTY"])
     rec.record_step(3, "No Action", 0.7, 0.9, 0.0, 0.7, 0.0, 0.0, 0.0, -config.LOW_STAMINA_PUNISH, ["ZERO STAMINA"])
     rec.record_step(4, "Light Attack", 0.7, 0.0, 0.9, 0.7, 0.9, 2.0, 0.0, 102.0, ["BOSS_HIT(deduction=1.00)"], defeat_bonus=100.0)
@@ -70,7 +70,7 @@ def test_event_counts_by_prefix(tmp_path, monkeypatch):
 def test_fall_vs_combat_death_not_confused(tmp_path, monkeypatch):
     rec = make_recorder(tmp_path, monkeypatch)
     rec.record_step(0, "Move Left", 0.0, 0.9, 0.8, 0.8, 0.8, 0.0, 5.0, -5.0, ["HIT_TAKEN(vuln=1.44)", "FALL_DEATH"])
-    rec.record_step(1, "No Action", 0.0, 0.9, 0.5, 0.3, 0.5, 0.0, 4.3, -4.3, ["HIT_TAKEN(vuln=2.89)", "MULTIPLE_HIT_PENALTY(x1)", "DEATH"])
+    rec.record_step(1, "No Action", 0.0, 0.9, 0.5, 0.3, 0.5, 0.0, 4.3, -4.3, ["HIT_TAKEN(vuln=2.89)", "DEATH"])
     assert rec.event_counts["fall_death"] == 1
     assert rec.event_counts["combat_death"] == 1
 
