@@ -6,12 +6,15 @@ captured frame with OpenCV.
 """
 
 import os
+import signal
 import struct
+import time
 
 import cv2
 import numpy as np
 
 from eldenring_ai.config import paths
+from eldenring_ai.config.runtime import GAME_KILL_POLL_INTERVAL
 from eldenring_ai.config.vision import BOSS_HP_REGION, BOSS_HP_CAP_FULL
 from eldenring_ai.config.offsets import (
     _WORLD_CHR_MAN_AOB,
@@ -255,6 +258,31 @@ class GameMemory:
             return state != "Z"
         except (FileNotFoundError, ProcessLookupError):
             return False
+
+    def kill(self):
+        """SIGKILL the game and block until the process is gone.
+
+        Blocking matters to the callers: they shut the game down in order to
+        relaunch it from a restored save, and a still-dying process would let
+        the liveness check pass and skip the relaunch entirely. SIGKILL rather
+        than SIGTERM because a clean exit would write the save we are about to
+        replace.
+        """
+        if self.pid is None:
+            return
+        # The cached pid can be stale and the kernel recycles pids, so confirm it is
+        # still the game's before sending a signal that would otherwise land on some
+        # unrelated process of ours mid-run.
+        if self.pid != find_pid():
+            self.pid = None
+            return
+        try:
+            os.kill(self.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        while self.is_alive():
+            time.sleep(GAME_KILL_POLL_INTERVAL)
+        self.pid = None
 
     def resolve_static_ptr(self):
         if self.pid is None:

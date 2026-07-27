@@ -69,6 +69,7 @@ COUNTERS = [
     Counter("total_fall_deaths",      "Falls",       "counters/fall_deaths"),
     Counter("total_kills",            "Victories",   "counters/victories"),
     Counter("total_grace_recoveries", "Graces",      "counters/graces"),
+    Counter("total_save_restores",    "Restores",    "counters/save_restores"),
 ]
 
 # Additive slices of the episode's net reward. Signed so the dashboard can show

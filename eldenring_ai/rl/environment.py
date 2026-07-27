@@ -18,6 +18,7 @@ from eldenring_ai.config import paths
 from eldenring_ai.io import input
 from eldenring_ai.io.capture import ScreenCapture
 from eldenring_ai.io.memory import GameMemory, get_game_state, find_pid, reset_boss_hp_smoothing
+from eldenring_ai.io.save import restore_save
 from eldenring_ai.rl.reward import compute_reward
 from eldenring_ai.ui import shared_stats
 from eldenring_ai.ui.dashboard import _print_dashboard
@@ -138,7 +139,9 @@ class EldenRingEnv(gymnasium.Env):
         self._episode_outcome = None
         self._outside_arena_steps = 0
 
-        self._stop_requested = False
+        # Set when Margit dies: the save now has him gone for good, so the game has to
+        # be taken down and relaunched from the backup before the next episode.
+        self._restore_pending = False
 
         self._recorder.reset()
 
@@ -149,6 +152,7 @@ class EldenRingEnv(gymnasium.Env):
         self.total_fall_deaths = 0
         self.total_kills = 0
         self.total_grace_recoveries = 0
+        self.total_save_restores = 0
 
         self.training_actions = {action: 0 for action in input.ACTIONS}
 
@@ -316,7 +320,7 @@ class EldenRingEnv(gymnasium.Env):
             defeat_bonus = config.REWARD_BOSS_DEFEATED
             reward += defeat_bonus
             self._episode_outcome = "kill"
-            self._stop_requested = True
+            self._restore_pending = True
 
         # Unbounded episodes: only death or victory ends one, never a step limit.
         truncated = False
@@ -354,7 +358,24 @@ class EldenRingEnv(gymnasium.Env):
         self._last_obs = obs_dict
         return obs_dict, reward, terminated, truncated, {}
 
+    def _restore_save(self):
+        """Put the canonical save back before the game is relaunched.
+
+        Runs on every launch this code performs, not just after a victory: the game
+        is down anyway, the copy costs milliseconds, and it clears whatever state the
+        game persisted since the last restore so every episode starts identical. A
+        skipped restore is logged, never raised - a `cp` must not end a multi-day run.
+        """
+        reason = restore_save()
+        if reason:
+            log_event(f"save restore skipped: {reason}")
+            return
+        self.total_save_restores += 1
+        log_event("save restored from backup")
+
     def _launch_and_recover_game(self):
+        self._restore_save()
+
         # Detached session + silenced output: the game outlives a Ctrl+C on training
         # (it is not in our process group) and Steam's chatter stays off the terminal.
         subprocess.Popen(
@@ -435,6 +456,14 @@ class EldenRingEnv(gymnasium.Env):
                 log_event(f"reporting: episode {self.episode_count} skipped: {exc}")
 
         self._save_persist()
+
+        # Margit stays dead in the live save, so the win has to be undone before the
+        # next episode. Taking the game down here is the whole handover: _initialize()
+        # clears the flag straight after, and the recovery path below sees a dead
+        # process, restores the backup and relaunches exactly as it does after a crash.
+        if self._restore_pending:
+            log_event("victory: taking the game down to restore the pre-Margit save")
+            self.memory.kill()
 
         self._initialize()
 

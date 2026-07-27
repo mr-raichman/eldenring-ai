@@ -25,6 +25,7 @@ OUTSIDE_ARENA_LIMIT = 5
 CONTROLLER_SETTLE_DELAY    = 2.0   # after creating the virtual pad, before first use
 CONDITION_POLL_INTERVAL    = 0.1   # _wait_for_condition re-read cadence
 GAME_LAUNCH_POLL_INTERVAL  = 3.0   # while waiting for the game PID to appear
+GAME_KILL_POLL_INTERVAL    = 0.2   # while waiting for a killed game process to disappear
 PTR_RESOLVE_POLL_INTERVAL  = 1.0   # while re-resolving the static pointer
 PLAYER_READY_POLL_INTERVAL = 0.2   # while waiting for the player to become controllable
 ARENA_CONFIRM_INTERVAL     = 0.1   # area_id re-read cadence inside _confirm_in_arena
@@ -35,6 +36,11 @@ BEFORE_MARGIT_TIMEOUT  = 20.0
 ARENA_ENTER_TIMEOUT    = 2.0
 POST_RECOVERY_DELAY    = 1.0       # settle pause after the launch/recovery branch
 CAPTURE_RETRY_DELAY    = 1.0       # after tearing down a failed ScreenCapture
+
+# Sanity floor for the save backup before it is copied over the live save. The real
+# file is a fixed-size ~29 MB container; anything far below that is a bad copy, and
+# restoring it would break the character rather than reset it.
+SAVE_MIN_BYTES = 20 * 1024 * 1024
 
 # Scripted-sequence timings, hand-measured against real game pacing. These are
 # calibration values, not derived constants - re-measure if the route, the game

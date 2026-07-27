@@ -1,6 +1,6 @@
 """
 train.py - PPO setup and the training entry point: builds the environment and
-policy, wires the checkpoint / stats / stop-on-victory callbacks, resumes from
+policy, wires the checkpoint / stats / save-on-victory callbacks, resumes from
 the latest checkpoint, and runs the learn loop.
 """
 
@@ -28,7 +28,8 @@ POLICY_KWARGS = dict(
     activation_fn=nn.ReLU,
 )
 
-# Filename prefix for all saved checkpoints (margit_ppo_<steps>_steps.zip, _final, _victory).
+# Filename prefix for all saved checkpoints (margit_ppo_<steps>_steps.zip, _final,
+# _victory_<n> - one per win, numbered so later wins don't overwrite earlier ones).
 CHECKPOINT_PREFIX = "margit_ppo_"
 
 
@@ -62,19 +63,29 @@ class StatsLoggerCallback(BaseCallback):
             self.logger.record(tag, value)
 
 
-class StopOnVictoryCallback(BaseCallback):
+class SaveOnVictoryCallback(BaseCallback):
+    """Checkpoint every win and keep training - the goal is to master Margit, not to
+    beat him once. Keyed on the env's kill counter rather than a flag, because the
+    env has already reset (restoring the save and relaunching the game) by the time
+    this callback runs again."""
+
     def __init__(self, save_path, verbose=0):
         super().__init__(verbose)
         self.save_path = save_path
+        self._kills_seen = None
 
     def _on_step(self):
         env = self.training_env.envs[0]
         while hasattr(env, "env"):
             env = env.env
-        if getattr(env, "_stop_requested", False):
-            print(f"\nMargit defeated - saving model to {self.save_path}.zip")
-            self.model.save(self.save_path)
-            return False
+        kills = getattr(env, "total_kills", 0)
+        if self._kills_seen is None:      # first step: adopt the resumed count
+            self._kills_seen = kills
+        elif kills > self._kills_seen:
+            self._kills_seen = kills
+            path = f"{self.save_path}_{kills}"
+            print(f"\nMargit defeated ({kills}) - saving model to {path}.zip")
+            self.model.save(path)
         return True
 
 class TieredCheckpointCallback(CheckpointCallback):
@@ -197,7 +208,7 @@ def train():
             callback=[
                 checkpoint_callback,
                 StatsLoggerCallback(),
-                StopOnVictoryCallback(
+                SaveOnVictoryCallback(
                     save_path=os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}victory"),
                 ),
             ],

@@ -103,6 +103,12 @@ fog gate, confirms it really is inside the arena before starting, and on death i
 the respawn and walks back. If the game crashes it relaunches it through Steam, re-scans for
 the pointer and carries on.
 
+A win doesn't end training, because what I want is for it to master Margit, not to beat him
+once. It does leave Margit permanently dead in the save though, so on a victory the
+environment kills the game, copies the backup save from `data/` over the live one and
+relaunches. It restores the same way after a crash, which keeps every episode starting from
+an identical character state instead of slowly drifting.
+
 ## Status
 
 It works end to end and trains unattended for long runs. It's an active experiment though,
@@ -133,6 +139,7 @@ At the very least you'll have to adjust these to match your machine, all of them
 | Boss/player HP-bar pixel regions    | `vision.py`  |
 | Memory offsets and AOB signature    | `offsets.py` |
 | Walk-to-fog route timings           | `runtime.py` |
+| Elden Ring save-file location       | `paths.py`   |
 
 The memory offsets are the fragile part: I reverse-engineered them against one game build, so
 a patch can invalidate them at any moment.
@@ -179,6 +186,9 @@ uv run python tools/area_id.py         # area ID / fog-gate check
 uv run python tools/stamina.py         # stamina
 uv run python tools/capture_frames.py  # dump the AI frame stack
 
+# Kill the game, restore the backup save, relaunch - the same restore training does
+uv run python tools/restore_save.py
+
 # Unit tests (pure logic, no game required)
 uv run pytest
 ```
@@ -218,11 +228,12 @@ eldenring_ai/           the importable package
     offsets.py          WorldChrMan AOB signature + pointer-chain offsets
     runtime.py          debug toggles, game-launch parameters, recovery timeouts
                         and poll intervals, scripted-sequence calibration timings
-    paths.py            all filesystem locations (relocatable, no ~ hardcodes)
-  io/                 the three I/O channels
+    paths.py            filesystem locations (relocatable except the game's save path)
+  io/                 everything that touches the game
     capture.py          ScreenCapture (wf-recorder -> v4l2 -> OpenCV)
     input.py            virtual gamepad, ACTIONS, menu navigation
     memory.py           GameMemory: AOB scan, /proc reads, boss-HP vision
+    save.py             restoring the backup save over the game's live save
   rl/                 the learning loop
     environment.py      EldenRingEnv - the orchestrator
     reward.py           reward shaping (pure, unit-tested)
@@ -260,6 +271,11 @@ If you want to extend it, there are two rules I try to keep the project honest w
   `kernel.yama.ptrace_scope` this may need elevated privileges.
 - **This drives your real game, mouse and keyboard focus.** Nothing here is sandboxed, so don't
   run it on a save you care about. Back it up first.
+- **Training overwrites your live save.** After a crash or a victory it copies
+  `data/eldenring-save-backup.sl2` over the save at `paths.SAVE_LIVE`, `.bak` included. The copy
+  only ever goes in that direction, so the backup is the canonical state and you have to redo it
+  by hand whenever you change the character. Turn Steam Cloud off for Elden Ring as well, or it
+  can put the old save back underneath you.
 - It plays one specific build from one specific save state. Different gear, different levels or
   a different starting grace will all need re-tuning.
 

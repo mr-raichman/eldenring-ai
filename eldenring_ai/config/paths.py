@@ -1,6 +1,8 @@
 """
-paths.py - filesystem locations derived from the package location so the
-repository is relocatable (replaces the old ~/eldenring-ai/... hardcodes).
+paths.py - filesystem locations. Everything the project owns is derived from the
+package location so the repository is relocatable (replaces the old
+~/eldenring-ai/... hardcodes). SAVE_LIVE is the one exception: it points at the
+game's own save, which lives wherever Steam put it.
 """
 
 from pathlib import Path
@@ -15,6 +17,17 @@ SESSION_STATS = DATA_DIR / "session_stats.json"
 PTR_CACHE = DATA_DIR / "world_chr_man_ptr.cache"
 WF_LOG = DATA_DIR / "wf-recorder.log"
 SAVE_BACKUP = DATA_DIR / "eldenring-save-backup.sl2"
+
+# The game's live save, restored from SAVE_BACKUP after a crash or a victory so
+# every episode starts from the same character state (and so a defeated Margit
+# does not persist into the next run). Machine-specific: it contains the Steam
+# library location and the account's Steam ID, so unlike everything above it
+# cannot be derived from PROJECT_ROOT. The copy is strictly one-way - nothing
+# writes SAVE_BACKUP, or a post-victory save would overwrite the canonical state.
+SAVE_LIVE = Path.home() / (
+    "Games/SteamLibrary/steamapps/compatdata/1245620/pfx/drive_c/users/steamuser"
+    "/AppData/Roaming/EldenRing/76561198216009149/ER0000.sl2"
+)
 
 # Each training run keeps its records + event log in its own folder under data/runs/.
 # These default to DATA_DIR (standalone / tests) and are repointed by use_run_dir().
