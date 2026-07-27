@@ -17,16 +17,16 @@ FALL_DEATH_HP_THRESHOLD = 0.75
 GREEDY_PENALTY = 3
 
 STAMINA_EXP = 3
-LOW_STAMINA_PUNISH = 0.5
+LOW_STAMINA_PUNISH = 0.1
 
 STEP_PENALTY = 0.05
 
 REWARD_BOSS_DEFEATED = 100.0
 
-# Reward history windows (in steps; 0.2s each)
+# Reward history windows (in steps; 0.2s each, max possible = HISTORY_LENGTH)
 DODGE_WINDOW = 10
-GREEDY_WINDOW = 5
-MULTIHIT_WINDOW = 6
+GREEDY_WINDOW = 6
+MULTIHIT_WINDOW = 10
 
 # Episode (unbounded: episodes end only on death or victory, never a step limit)
 HISTORY_LENGTH = 24
@@ -36,7 +36,7 @@ BOSS_DEFEAT_HP_THRESHOLD = 0.005
 LEARNING_RATE = 2e-4
 N_STEPS = 2048
 BATCH_SIZE = 512
-N_EPOCHS = 10
+N_EPOCHS = 6
 GAMMA = 0.96
 ENT_COEF = 0.01
 TARGET_KL = 0.03
