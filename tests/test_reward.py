@@ -111,8 +111,8 @@ def test_fall_death_uses_fixed_penalty():
     _, player_punish, reward, events = compute_reward(
         **neutral(player_hp=0.0, prev_player_hp=0.8)
     )
-    assert player_punish == pytest.approx(config.MIN_FALL_DEATH_PENALTY)
-    assert reward == pytest.approx(-config.MIN_FALL_DEATH_PENALTY)
+    assert player_punish == pytest.approx(config.FALL_DEATH_PENALTY)
+    assert reward == pytest.approx(-config.FALL_DEATH_PENALTY)
     assert "FALL_DEATH" in events
 
 

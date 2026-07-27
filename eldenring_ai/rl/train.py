@@ -31,6 +31,22 @@ POLICY_KWARGS = dict(
 # Filename prefix for all saved checkpoints (margit_ppo_<steps>_steps.zip, _final, _victory).
 CHECKPOINT_PREFIX = "margit_ppo_"
 
+
+def _lr_schedule(model):
+    """Exponential decay on the model's absolute timestep count, floored at LR_MIN.
+
+    SB3 calls the schedule with `progress_remaining`, which it derives from the
+    total_timesteps of the current learn() call - and on resume it extends that
+    budget by the steps already done, which would step the rate back up every time
+    training is restarted. Reading model.num_timesteps instead makes the schedule
+    depend only on how far the agent has actually trained.
+    """
+    def schedule(_progress_remaining):
+        decay = config.LR_DECAY_FACTOR ** (model.num_timesteps / config.LR_DECAY_STEPS)
+        return max(config.LR_MIN, config.LEARNING_RATE * decay)
+
+    return schedule
+
 class StatsLoggerCallback(BaseCallback):
     def _on_step(self):
         if self.model.logger.name_to_value:
@@ -142,13 +158,11 @@ def train():
         model.batch_size    = config.BATCH_SIZE
         model.ent_coef      = config.ENT_COEF
         model.target_kl     = config.TARGET_KL
-        # The learning-rate schedule is fixed at construction; resuming keeps the
-        # loaded schedule. Every experiment here is a fresh run, so this is moot.
     else:
         model = PPO(
             policy="MultiInputPolicy",
             env=env,
-            learning_rate=lambda progress_remaining: config.LEARNING_RATE * progress_remaining,
+            learning_rate=config.LEARNING_RATE,
             n_steps=config.N_STEPS,
             batch_size=config.BATCH_SIZE,
             n_epochs=config.N_EPOCHS,
@@ -160,6 +174,10 @@ def train():
             tensorboard_log=str(paths.LOGS_DIR),
             device="cuda",
         )
+
+    # Installed after construction (and after load, which restores the pickled one)
+    # because the schedule closes over the model to read its timestep count.
+    model.lr_schedule = _lr_schedule(model)
 
     logger = configure(str(paths.LOGS_DIR), format_strings=["tensorboard"])
     model.set_logger(logger)
