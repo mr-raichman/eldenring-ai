@@ -24,7 +24,7 @@ choice once it starts detecting the patterns in its inputs.
 ### Character
 
 I wanted the most basic possible build, so I chose Vagabond, a sword and shield class, at level
-1. The character has not been leveled up, as I want it to really be able to dodge and decide
+one. The character has not been leveled up, as I want it to really be able to dodge and decide
 when to attack, not to win by chance because it's overpowered.
 
 After some months of building the project and training, I opted for discarding the shield. Even
