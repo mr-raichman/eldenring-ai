@@ -36,7 +36,7 @@ POLICY_KWARGS = dict(
 CHECKPOINT_PREFIX = "margit_ppo_"
 
 
-def _lr_schedule(model):
+class TimestepDecaySchedule:
     """Exponential decay on the model's absolute timestep count, floored at LR_MIN.
 
     SB3 calls the schedule with `progress_remaining`, which it derives from the
@@ -44,12 +44,26 @@ def _lr_schedule(model):
     budget by the steps already done, which would step the rate back up every time
     training is restarted. Reading model.num_timesteps instead makes the schedule
     depend only on how far the agent has actually trained.
+
+    A class rather than a closure over the model, because of __getstate__ below.
     """
-    def schedule(_progress_remaining):
-        decay = config.LR_DECAY_FACTOR ** (model.num_timesteps / config.LR_DECAY_STEPS)
+
+    def __init__(self, model):
+        self.model = model
+
+    def __call__(self, _progress_remaining):
+        decay = config.LR_DECAY_FACTOR ** (self.model.num_timesteps / config.LR_DECAY_STEPS)
         return max(config.LR_MIN, config.LEARNING_RATE * decay)
 
-    return schedule
+    def __getstate__(self):
+        # SB3 cloudpickles lr_schedule into every checkpoint, and its exclusion list
+        # only drops the top-level `env` key. Holding the model here would reach it
+        # anyway, and through it the evdev gamepad's ctypes function pointers, which
+        # refuse to pickle - that killed every save. Nothing reads what comes back:
+        # PPO.load() runs _setup_model() -> _setup_lr_schedule(), which overwrites
+        # the restored object, and train() reinstalls this schedule right after.
+        return {}
+
 
 class StatsLoggerCallback(BaseCallback):
     def _on_step(self):
@@ -203,7 +217,7 @@ def train():
 
     # Installed after construction (and after load, which restores the pickled one)
     # because the schedule closes over the model to read its timestep count.
-    model.lr_schedule = _lr_schedule(model)
+    model.lr_schedule = TimestepDecaySchedule(model)
 
     logger = configure(str(paths.LOGS_DIR), format_strings=["tensorboard"])
     model.set_logger(logger)
