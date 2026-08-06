@@ -7,6 +7,7 @@ the latest checkpoint, and runs the learn loop.
 import glob
 import os
 import time
+import zipfile
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
@@ -107,22 +108,33 @@ class TieredCheckpointCallback(CheckpointCallback):
 
         return result
 
-def find_latest_checkpoint():
-    pattern     = os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}*_steps.zip")
-    checkpoints = glob.glob(pattern)
+def _steps_in_name(path):
+    parts = os.path.basename(path).replace(".zip", "").split("_")
+    try:
+        return int(parts[-2])
+    except (ValueError, IndexError):
+        return 0
 
-    if checkpoints:
-        def _extract_steps(path):
-            parts = os.path.basename(path).replace(".zip", "").split("_")
-            try:
-                return int(parts[-2])
-            except (ValueError, IndexError):
-                return 0
-        checkpoints.sort(key=_extract_steps)
-        return checkpoints[-1]
+
+def find_latest_checkpoint():
+    """The newest checkpoint PPO.load() can actually open, or None.
+
+    A run killed while CheckpointCallback was writing leaves a truncated (usually
+    0-byte) zip. It sorts newest, PPO.load() rejects it, and every later resume dies
+    on it until somebody deletes it by hand. Skipping it is reported rather than
+    silent: it is real training progress that is gone, not a tidy-up.
+    """
+    pattern = os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}*_steps.zip")
+
+    for path in sorted(glob.glob(pattern), key=_steps_in_name, reverse=True):
+        if zipfile.is_zipfile(path):
+            return path
+        print(f"Skipping unreadable checkpoint (truncated mid-write?): {path}")
 
     final_path = os.path.join(str(paths.MODELS_DIR), f"{CHECKPOINT_PREFIX}final.zip")
-    return final_path if os.path.exists(final_path) else None
+    if os.path.exists(final_path) and zipfile.is_zipfile(final_path):
+        return final_path
+    return None
 
 
 def _latest_run_dir():
