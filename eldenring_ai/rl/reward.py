@@ -16,7 +16,12 @@ def compute_reward(
     st_history, boss_hp_history,
     hp_history, action_history
 ):
-    boss_hp_delta   = min(max(0.0, prev_boss_hp - boss_hp), 1.0)
+    # The boss reward is flat per hit, not proportional to the damage, so anything
+    # that reads as a drop gets paid in full. Below BOSS_HIT_MIN_DELTA that is a
+    # median-smoothing tail or a single spoiled pixel column, never a sword landing.
+    boss_hp_delta   = prev_boss_hp - boss_hp
+    if boss_hp_delta < config.BOSS_HIT_MIN_DELTA:
+        boss_hp_delta = 0.0
     player_hp_delta = prev_player_hp - player_hp
 
     events = []

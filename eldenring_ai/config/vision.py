@@ -35,4 +35,9 @@ BOSS_HP_SATURATION_MAX = 60
 # The bar reading is a median over this many consecutive frames. A single frame can be
 # spoiled by an effect drawn over the HUD, and a median discards that where a mean
 # would smear it into the value.
-BOSS_HP_MEDIAN_WINDOW = 5
+#
+# 3 and not 5: the median only settles once most of the window holds the new value, so
+# every extra frame is another step of delay between the sword landing and the reward
+# appearing. 5 cost two steps (0.4 s) of that, and the spike rejection it bought is now
+# also covered by BOSS_HIT_MIN_DELTA, which refuses to pay for a sub-hit-sized drop.
+BOSS_HP_MEDIAN_WINDOW = 3

@@ -246,15 +246,21 @@ class EldenRingEnv(gymnasium.Env):
         one_hot[action] = 1.0
         self._action_history.append(one_hot)
 
+        # Hold the action for its full duration BEFORE reading anything. Capturing
+        # first (which is what this did) meant the frame and the HP values were taken
+        # milliseconds after the button press, so the reward measured the previous
+        # action's hold and the returned observation predated this action entirely -
+        # every boss hit in the records was credited to whatever came ~4 steps later.
+        remaining = config.ACTION_LOCK_DURATION - (time.time() - start_lock)
+        if remaining > 0:
+            time.sleep(remaining)
+
         # capture new observation and game state
         try:
             frame, observation = self.capture.get_frame()
             self.memory.refresh()
             player_hp, boss_hp, stamina = get_game_state(frame, self.memory)
         except Exception:
-            remaining = config.ACTION_LOCK_DURATION - (time.time() - start_lock)
-            if remaining > 0:
-                time.sleep(remaining)
             return (
                 self._last_obs if self._last_obs is not None else self._zero_obs(),
                 0.0,
@@ -273,9 +279,6 @@ class EldenRingEnv(gymnasium.Env):
             if self._outside_arena_steps >= config.OUTSIDE_ARENA_LIMIT:
                 log_event(f"step: outside arena (area_id={self.memory._last_area_id}) - aborting episode")
                 self._episode_outcome = "aborted"
-                remaining = config.ACTION_LOCK_DURATION - (time.time() - start_lock)
-                if remaining > 0:
-                    time.sleep(remaining)
                 return (
                     self._last_obs if self._last_obs is not None else self._zero_obs(),
                     0.0, True, False, {},
@@ -318,7 +321,9 @@ class EldenRingEnv(gymnasium.Env):
 
         # update history buffers and previous-step values
         self._hp_history.append(player_hp)
-        if min(max(0.0, self.prev_boss_hp - boss_hp), 1.0) > 0:
+        # Same threshold the reward uses, for the same reason: a drop too small to be
+        # a real hit must not suppress the step penalty or arm the greedy window.
+        if self.prev_boss_hp - boss_hp >= config.BOSS_HIT_MIN_DELTA:
             self._boss_hp_history.append(1)
         else:
             self._boss_hp_history.append(0)
@@ -341,10 +346,6 @@ class EldenRingEnv(gymnasium.Env):
         self.ep_steps += 1
 
         obs_dict = self._build_obs(observation)
-
-        remaining = config.ACTION_LOCK_DURATION - (time.time() - start_lock)
-        if remaining > 0:
-            time.sleep(remaining)
 
         self._last_obs = obs_dict
         return obs_dict, reward, terminated, truncated, {}

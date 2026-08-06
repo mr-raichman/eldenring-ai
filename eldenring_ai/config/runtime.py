@@ -7,9 +7,14 @@ DEBUG_MODE = 0
 # Rolling number of most-recent episodes kept in the per-step record CSV.
 STEP_RECORD_EPISODES = 5
 
-# How long one env step is held before the next action. Every other cadence in the
+# How long an action is held before the state is read. Every other cadence in the
 # project is a multiple of it: the reward history windows, the frame-stack spacing,
 # and the micro-episode the reward is shaped around.
+#
+# The wall-clock step period is this plus the capture and memory read, which now
+# happen after the hold rather than inside it - that is the point, since a reading
+# taken mid-press describes the previous action. Measure steps_per_s in the episode
+# records after a change here; it was 4.81/s when the read came first.
 ACTION_LOCK_DURATION = 0.2
 
 # How long a tapped button is held down on the virtual pad.

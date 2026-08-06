@@ -8,6 +8,10 @@ MEAN_STATS_WINDOW = 20
 BOSS_PARAMETER = 1
 DODGE_REWARD = 1.5
 
+# Smallest boss-HP drop that counts as a hit. A real sword hit measures 0.016-0.025
+# of the bar (16-25 px of BOSS_HP_CAP_FULL); anything under this is bar-reading noise.
+BOSS_HIT_MIN_DELTA = 0.01
+
 PLAYER_PARAMETER = 1
 # Taking a hit is punished by (VULNERABILITY_BASE - hp) ** VULNERABILITY_EXP, so the
 # same damage costs more the lower the health it was taken at. The base sets the

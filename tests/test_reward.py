@@ -51,6 +51,18 @@ def test_boss_hit_rewards_positively():
     assert reward > 0
 
 
+def test_sub_threshold_boss_drop_pays_nothing():
+    # Episode 213 step 126: a 0.001 drop two steps after a real hit, the median's tail
+    # settling. The reward is flat per hit, so that artifact was paid +0.971 - 12% of
+    # that episode's positive reward, for nothing happening.
+    boss_reward, _, reward, events = compute_reward(
+        **neutral(boss_hp=0.999, prev_boss_hp=1.0)
+    )
+    assert boss_reward == 0.0
+    assert reward == -config.STEP_PENALTY
+    assert not any(e.startswith("BOSS_HIT") for e in events)
+
+
 def test_dodge_before_boss_hit_gets_bonus():
     actions = [[0.0] * input.N_ACTIONS for _ in range(HISTORY)]
     actions[-1][DODGE_ID] = 1.0
