@@ -21,13 +21,14 @@ from eldenring_ai.io.memory import GameMemory, get_game_state, find_pid, reset_b
 from eldenring_ai.io.save import restore_save
 from eldenring_ai.rl.reward import compute_reward
 from eldenring_ai.ui import shared_stats
-from eldenring_ai.ui.dashboard import _print_dashboard
+from eldenring_ai.ui.dashboard import print_dashboard
 from eldenring_ai.ui.episode_log import EpisodeRecorder, log_event
 from eldenring_ai.ui.metrics import (
     COUNTERS,
     DERIVED_MEASURES,
     EPISODE_METRICS,
     EVENT_CATEGORIES,
+    PPO_STATS,
     REWARD_COMPONENTS,
 )
 
@@ -35,19 +36,6 @@ os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("WAYLAND_DISPLAY", "wayland-1")
 
 PERSIST_FILE = str(paths.SESSION_STATS)
-
-# Short-name -> SB3 logger tag for the PPO snapshot saved into each episode record.
-_PPO_SNAPSHOT_KEYS = [
-    ("explained_variance",   "train/explained_variance"),
-    ("entropy_loss",         "train/entropy_loss"),
-    ("value_loss",           "train/value_loss"),
-    ("policy_gradient_loss", "train/policy_gradient_loss"),
-    ("clip_fraction",        "train/clip_fraction"),
-    ("approx_kl",            "train/approx_kl"),
-    ("learning_rate",        "train/learning_rate"),
-    ("ep_rew_mean",          "rollout/ep_rew_mean"),
-    ("ep_len_mean",          "rollout/ep_len_mean"),
-]
 
 
 class EldenRingEnv(gymnasium.Env):
@@ -225,12 +213,15 @@ class EldenRingEnv(gymnasium.Env):
             "episode": self.episode_count,
             "training_time_s": now - self.training_start_time,
             "total_timesteps": ppo.get("total_timesteps", 0),
-            "outcome": self._episode_outcome or "timeout",
+            # No outcome set means step() bailed out early: the game process was gone,
+            # or a capture / memory read raised. Never a step limit - episodes are
+            # unbounded and end only on death or victory.
+            "outcome": self._episode_outcome or "interrupted",
             "duration_s": duration,
             "steps_per_s": self.ep_steps / max(duration, 0.001),
             "final_boss_hp": self.ep_boss_hp,
             "actions": dict(self.ep_actions),
-            "ppo": {name: ppo.get(tag) for name, tag in _PPO_SNAPSHOT_KEYS},
+            "ppo": {s.key: ppo.get(s.tag) for s in PPO_STATS},
         }
 
     def step(self, action):
@@ -451,7 +442,7 @@ class EldenRingEnv(gymnasium.Env):
                 self._publish_episode_metrics(values)
                 self._recorder.write_episode(self._build_episode_context())
                 if not config.DEBUG_MODE:
-                    _print_dashboard(self)
+                    print_dashboard(self)
             except Exception as exc:
                 log_event(f"reporting: episode {self.episode_count} skipped: {exc}")
 
@@ -521,6 +512,16 @@ class EldenRingEnv(gymnasium.Env):
 
         self._last_obs = obs_dict
         return obs_dict, {}
+
+    def close(self):
+        """Release the capture pipeline and the virtual pad.
+
+        gymnasium.Env.close() is a no-op, so without this train.py's env.close() left
+        wf-recorder streaming and the UInput device present after a clean exit. The
+        game is deliberately left running: it outlives training by design.
+        """
+        self.capture.close()
+        self.gamepad.close()
 
     def _save_persist(self):
         data = {

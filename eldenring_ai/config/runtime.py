@@ -7,10 +7,15 @@ DEBUG_MODE = 0
 # Rolling number of most-recent episodes kept in the per-step record CSV.
 STEP_RECORD_EPISODES = 5
 
+# How long one env step is held before the next action. Every other cadence in the
+# project is a multiple of it: the reward history windows, the frame-stack spacing,
+# and the micro-episode the reward is shaped around.
 ACTION_LOCK_DURATION = 0.2
 
+# How long a tapped button is held down on the virtual pad.
+PRESS_DURATION = 0.02
+
 ELDEN_RING_APP_ID = "1245620"
-GAME_LAUNCH_TIMEOUT = 180  # seconds
 MENU_CONFIRM_INTERVAL = 1.0  # seconds between BTN_A presses
 
 # Arena safety against a start on a transient area_id read: how long area_id must

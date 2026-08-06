@@ -9,6 +9,10 @@ BOSS_PARAMETER = 1
 DODGE_REWARD = 1.5
 
 PLAYER_PARAMETER = 1
+# Taking a hit is punished by (VULNERABILITY_BASE - hp) ** VULNERABILITY_EXP, so the
+# same damage costs more the lower the health it was taken at. The base sets the
+# multiplier's range: at 2.0 it runs from 1x at full health to 4x at zero.
+PLAYER_VULNERABILITY_BASE = 2.0
 PLAYER_VULNERABILITY_EXP = 2
 
 MIN_COMBAT_DEATH_PENALTY = 3

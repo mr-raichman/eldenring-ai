@@ -55,6 +55,14 @@ class DerivedMeasure:
     tb_tag: str        # TensorBoard scalar tag
 
 
+@dataclass(frozen=True)
+class PpoStat:
+    """One of SB3's own training statistics, read back out of its logger."""
+    key: str           # short name; the field inside each episode record's "ppo" block
+    label: str         # dashboard label
+    tag: str           # SB3 logger name, e.g. "train/value_loss"
+
+
 # Per-episode metrics. `persist_*` keep the existing session_stats.json key names
 # so old stats files keep loading unchanged.
 EPISODE_METRICS = [
@@ -103,4 +111,20 @@ DERIVED_MEASURES = [
     DerivedMeasure("best_hit",                 "Best hit",    "+.2f", "derived/best_hit"),
     DerivedMeasure("worst_hit",                "Worst hit",   "+.2f", "derived/worst_hit"),
     DerivedMeasure("hits_taken_per_boss_hit",  "Taken/hit",   ".2f", "derived/hits_taken_per_boss_hit"),
+]
+
+# SB3's training statistics, shown on the dashboard and snapshotted into each episode
+# record. `train/*` only, deliberately: SB3 records the `rollout/*` keys (ep_rew_mean,
+# ep_len_mean) inside _dump_logs, which then clears the logger dict, while
+# StatsLoggerCallback drains it earlier in the iteration. They were listed here for a
+# long time and were None in all 1509 records of the longest run - a permanently empty
+# row reads as "no data yet" rather than "never available".
+PPO_STATS = [
+    PpoStat("explained_variance",   "Explained var",    "train/explained_variance"),
+    PpoStat("entropy_loss",         "Entropy loss",     "train/entropy_loss"),
+    PpoStat("value_loss",           "Value loss",       "train/value_loss"),
+    PpoStat("policy_gradient_loss", "Policy grad loss", "train/policy_gradient_loss"),
+    PpoStat("clip_fraction",        "Clip fraction",    "train/clip_fraction"),
+    PpoStat("approx_kl",            "Approx KL",        "train/approx_kl"),
+    PpoStat("learning_rate",        "Learning rate",    "train/learning_rate"),
 ]

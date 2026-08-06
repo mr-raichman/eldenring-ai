@@ -20,17 +20,15 @@ from rich.table import Table
 from rich.text import Text
 
 from eldenring_ai import config
-from eldenring_ai.io.input import ACTIONS
 from eldenring_ai.ui import shared_stats
 from eldenring_ai.ui.metrics import (
     COUNTERS,
     DERIVED_MEASURES,
     EPISODE_METRICS,
     EVENT_CATEGORIES,
+    PPO_STATS,
 )
 
-# Printed, not Live-rendered, because SB3's progress_bar already runs a Rich Live
-# display and two Live displays on one stdout conflict.
 _console = Console()
 
 # Borderless panel box: keeps the title and padding, drops the frame lines.
@@ -55,24 +53,15 @@ def training_live():
         finally:
             _live = None
 
-_PPO_DISPLAY = [
-    ("train/explained_variance",   "Explained var"),
-    ("train/entropy_loss",         "Entropy loss"),
-    ("train/value_loss",           "Value loss"),
-    ("train/policy_gradient_loss", "Policy grad loss"),
-    ("train/clip_fraction",        "Clip fraction"),
-    ("train/approx_kl",            "Approx KL"),
-    ("train/learning_rate",        "Learning rate"),
-    ("rollout/ep_rew_mean",        "Ep rew mean"),
-    ("rollout/ep_len_mean",        "Ep len mean"),
-]
-
+# "interrupted" is the fallback outcome in _build_episode_context: it means step()
+# returned early because the game process was gone or a capture/memory read raised.
+# It is not a step limit - episodes are unbounded and end only on death or victory.
 _OUTCOME = {
-    "kill":         ("VICTORY",    "bold green"),
-    "fall_death":   ("FALL DEATH", "bold red"),
-    "combat_death": ("DEATH",      "bold yellow"),
-    "timeout":      ("TIMEOUT",    "bold dim"),
-    "aborted":      ("ABORTED",    "bold dim"),
+    "kill":         ("VICTORY",     "bold green"),
+    "fall_death":   ("FALL DEATH",  "bold red"),
+    "combat_death": ("DEATH",       "bold yellow"),
+    "interrupted":  ("INTERRUPTED", "bold dim"),
+    "aborted":      ("ABORTED",     "bold dim"),
 }
 
 
@@ -133,7 +122,9 @@ def _metrics_panel(self, win):
 
 
 def _actions_panel(self):
-    names = list(ACTIONS)
+    # The env's own per-episode tally is keyed by action name, so the action table
+    # arrives with it. ui/ has no business importing io/ to ask for the same names.
+    names = list(self.ep_actions)
     half = (len(names) + 1) // 2
     left, right = names[:half], names[half:]
     t = _table(("Action", "left"), ("Ep", "right"), ("Action", "left"), ("Ep", "right"))
@@ -169,18 +160,20 @@ def _events_panel(self):
 
 def _ppo_panel():
     ppo = _table(("PPO metric", "left"), ("Value", "right"))
-    for key, label in _PPO_DISPLAY:
-        value = shared_stats.ppo_stats.get(key) if shared_stats.ppo_stats else None
-        ppo.add_row(label, _fmt_ppo(value))
+    for stat in PPO_STATS:
+        ppo.add_row(stat.label, _fmt_ppo(shared_stats.ppo_stats.get(stat.tag)))
     return Panel(ppo, box=_BLANK)
 
 
 def _info_row(self, win):
+    # The metrics panel holds the three numbers that answer "how did that episode go",
+    # so it is widened at the PPO panel's expense: at ratio 3 its values were the first
+    # thing to truncate, going at 180 columns while the PPO panel still had room.
     grid = Table.grid(expand=True)
-    grid.add_column(ratio=3)
+    grid.add_column(ratio=4)
     grid.add_column(ratio=4)
     grid.add_column(ratio=5)
-    grid.add_column(ratio=4)
+    grid.add_column(ratio=3)
     grid.add_row(_metrics_panel(self, win), _actions_panel(self), _events_panel(self), _ppo_panel())
     return grid
 
@@ -222,7 +215,7 @@ def _chart_panel(self, width, height):
     return Panel(Text.from_ansi("\n".join(lines)), box=_BLANK)
 
 
-def _print_dashboard(self):
+def print_dashboard(self):
     win = min(config.MEAN_STATS_WINDOW, max(1, self.episode_count))
     training_time = time.time() - self.training_start_time
     elapsed = time.time() - getattr(self, "start_ep_time", time.time())

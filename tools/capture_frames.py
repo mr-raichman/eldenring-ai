@@ -1,10 +1,10 @@
 """
 capture_frames.py - dump the AI's frame stack to PNGs for inspection.
 
-Press Enter to grab FRAME_STACK frames (FRAME_SKIP steps apart) and save them
-under tests/captures/capture_NNN/: the greyscale AI views, amplified frame
-diffs, the colour frame, and the boss HP-bar crop. Needs the game open and
-wf-recorder streaming.
+Press Enter to grab FRAME_STACK frames at the real stack spacing (FRAME_SKIP env
+steps apart) and save them under data/captures/capture_NNN/: the greyscale AI views,
+amplified frame diffs, the colour frame, and the boss HP-bar crop. Needs the game
+open and wf-recorder streaming.
 
     uv run python tools/capture_frames.py
 """
@@ -17,11 +17,17 @@ import numpy as np
 
 import _bootstrap  # noqa: F401  (sets sys.path + display env)
 
-from eldenring_ai.config import BOSS_HP_REGION, FRAME_SKIP, FRAME_STACK, OBSERVATION_SHAPE, V4L2_DEVICE
+from eldenring_ai.config import (
+    ACTION_LOCK_DURATION,
+    BOSS_HP_REGION,
+    FRAME_SKIP,
+    FRAME_STACK,
+    OBSERVATION_SHAPE,
+    V4L2_DEVICE,
+)
 from eldenring_ai.config import paths
 
-BASE_DIR      = str(paths.PROJECT_ROOT / "tests" / "captures")
-STEP_DURATION = 1 / 50.0
+BASE_DIR = str(paths.DATA_DIR / "captures")
 
 
 def _capture_once(cap, capture_count, sample_interval):
@@ -70,7 +76,11 @@ def _capture_once(cap, capture_count, sample_interval):
 
 
 def main():
-    sample_interval = STEP_DURATION * FRAME_SKIP
+    # The stack the policy sees is one frame per env step, sampled every FRAME_SKIP
+    # steps, so its spacing is ACTION_LOCK_DURATION * FRAME_SKIP. This used to assume a
+    # 50 fps capture and dumped frames 40 ms apart: ten times faster than the real
+    # thing, which made every diff look like the agent sees smooth motion.
+    sample_interval = ACTION_LOCK_DURATION * FRAME_SKIP
     cap = cv2.VideoCapture(V4L2_DEVICE)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 

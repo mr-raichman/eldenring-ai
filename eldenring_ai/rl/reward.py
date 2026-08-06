@@ -1,5 +1,9 @@
 """
-reward.py
+reward.py - the per-step reward, shaped from the damage dealt and taken.
+
+Pure: no I/O, no globals beyond `config`, so every branch is unit-testable. Exactly
+one of the branches below decides the returned reward, which is what lets
+EpisodeRecorder reconstruct the episode's composition from the event strings.
 """
 
 from eldenring_ai import config
@@ -17,7 +21,7 @@ def compute_reward(
 
     events = []
 
-    vulnerability = (2.0 - prev_player_hp)**config.PLAYER_VULNERABILITY_EXP
+    vulnerability = (config.PLAYER_VULNERABILITY_BASE - prev_player_hp)**config.PLAYER_VULNERABILITY_EXP
 
     # PLAYER HIT
     if player_hp_delta > 0:

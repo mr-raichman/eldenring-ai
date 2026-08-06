@@ -121,7 +121,7 @@ def test_combat_death_uses_hit_logic_with_floor():
     _, player_punish, reward, events = compute_reward(
         **neutral(player_hp=0.0, prev_player_hp=0.3)
     )
-    vuln = (2.0 - 0.3) ** config.PLAYER_VULNERABILITY_EXP
+    vuln = (config.PLAYER_VULNERABILITY_BASE - 0.3) ** config.PLAYER_VULNERABILITY_EXP
     expected = max(0.3 * vuln * config.PLAYER_PARAMETER, config.MIN_COMBAT_DEATH_PENALTY)
     assert player_punish == pytest.approx(expected)
     assert player_punish >= config.MIN_COMBAT_DEATH_PENALTY

@@ -36,13 +36,16 @@ class ScreenCapture:
         self._ensure_device()
         self._launch_wf_recorder()
 
-        self._cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+        # Open the configured node, not index 0: wf-recorder writes to V4L2_DEVICE, and
+        # opening a hardcoded index would silently read a different camera the moment
+        # that constant is changed for another machine.
+        self._cap = cv2.VideoCapture(self._device, cv2.CAP_V4L2)
         self._cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if not self._cap.isOpened():
             raise RuntimeError(
-                f"Could not open capture device {device} even after wf-recorder started. "
-                "Try running wf-recorder manually to check for errors."
+                f"Could not open capture device {self._device} even after wf-recorder "
+                "started. Try running wf-recorder manually to check for errors."
             )
 
         total_needed = config.FRAME_STACK * config.FRAME_SKIP
@@ -57,7 +60,7 @@ class ScreenCapture:
 
         if frames_captured == 0:
             raise RuntimeError(
-                "wf-recorder is running but no frames could be read from /dev/video0.\n"
+                f"wf-recorder is running but no frames could be read from {self._device}.\n"
                 f"Check {paths.WF_LOG} for errors."
             )
 

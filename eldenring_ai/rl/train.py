@@ -29,8 +29,10 @@ POLICY_KWARGS = dict(
     activation_fn=nn.ReLU,
 )
 
-# Filename prefix for all saved checkpoints (margit_ppo_<steps>_steps.zip, _final,
-# _victory_<n> - one per win, numbered so later wins don't overwrite earlier ones).
+# Filename prefix for all saved checkpoints. SB3's CheckpointCallback adds its own
+# separator, so the periodic files are margit_ppo__<steps>_steps.zip with two
+# underscores; the ones written here are margit_ppo_final and margit_ppo_victory_<n>
+# (one per win, numbered so later wins don't overwrite earlier ones).
 CHECKPOINT_PREFIX = "margit_ppo_"
 
 
@@ -90,7 +92,7 @@ class SaveOnVictoryCallback(BaseCallback):
         return True
 
 class TieredCheckpointCallback(CheckpointCallback):
-    def __init__(self, save_freq: int = config.CHECKPOINT_FREQ_MINI, keep_freq: int = config.CHECKPOINT_FREQ, save_path: str = str(paths.MODELS_DIR), name_prefix: str = CHECKPOINT_PREFIX, **kwargs):
+    def __init__(self, save_freq, keep_freq, save_path, name_prefix, **kwargs):
         assert keep_freq % save_freq == 0, "keep_freq must be a multiple of save_freq"
         super().__init__(save_freq=save_freq, save_path=save_path, name_prefix=name_prefix, **kwargs)
         self.keep_freq = keep_freq
@@ -175,7 +177,8 @@ def train():
             verbose=1,
             tensorboard_log=str(paths.LOGS_DIR),
         )
-        model.learning_rate = config.LEARNING_RATE
+        # learning_rate is deliberately not restored here: SB3 only reads it in
+        # _setup_lr_schedule, and model.lr_schedule is replaced below regardless.
         model.gamma         = config.GAMMA
         model.n_epochs      = config.N_EPOCHS
         model.batch_size    = config.BATCH_SIZE

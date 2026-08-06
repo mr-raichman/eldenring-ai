@@ -4,12 +4,13 @@ vision.py - screen-capture, frame-stacking, and boss-HP vision parameters.
 
 FRAME_STACK = 12
 FRAME_SKIP = 2
-OBSERVATION_SHAPE = (256, 256, FRAME_STACK)  # 1280x720
+
+# The policy's frame, not the screen's: captured frames are downscaled to this before
+# stacking. One stack spans FRAME_STACK * FRAME_SKIP * ACTION_LOCK_DURATION seconds.
+OBSERVATION_SHAPE = (256, 256, FRAME_STACK)
 
 WAYLAND_OUTPUT = "HDMI-A-1"
 V4L2_DEVICE = "/dev/video0"
-
-PRESS_DURATION = 0.02
 
 # Capture-pipeline settle delays, in seconds. Each one waits on an external process
 # or kernel module that gives no readiness signal, so the pause is the only handshake.
@@ -24,3 +25,14 @@ BOSS_HP_REGION = {
     "y2": 871,
 }
 BOSS_HP_CAP_FULL = 996
+
+# Detecting the right-hand cap of the boss HP bar inside BOSS_HP_REGION: the cap is
+# bright and almost colourless, so a column qualifies when it is above the brightness
+# floor and below the saturation ceiling. Calibrated against this build's HUD.
+BOSS_HP_BRIGHTNESS_MIN = 120
+BOSS_HP_SATURATION_MAX = 60
+
+# The bar reading is a median over this many consecutive frames. A single frame can be
+# spoiled by an effect drawn over the HUD, and a median discards that where a mean
+# would smear it into the value.
+BOSS_HP_MEDIAN_WINDOW = 5

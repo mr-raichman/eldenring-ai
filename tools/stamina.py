@@ -1,8 +1,10 @@
 """
 stamina.py - live stamina monitor.
 
-Confirms the current/max stamina offsets (ptr4 + 0x154 / 0x158). Sprint to
-deplete and watch the ratio.
+Confirms the stamina offsets in config/offsets.py are still right for this game build.
+Sprint to deplete and watch the ratio fall. Reads through GameMemory.read_stamina(),
+the same call the training loop uses, so a correct reading here is a correct reading
+there.
 
     uv run python tools/stamina.py
 """
@@ -12,10 +14,8 @@ import time
 
 import _bootstrap  # noqa: F401  (sets sys.path + display env)
 
-from eldenring_ai.io.memory import GameMemory, _read_int32
-
-STAMINA_CURRENT = 0x154
-STAMINA_MAX     = 0x158
+from eldenring_ai.config.offsets import PTR4_STAMINA_CUR, PTR4_STAMINA_MAX
+from eldenring_ai.io.memory import GameMemory
 
 
 def main():
@@ -24,19 +24,18 @@ def main():
         print("Elden Ring not found.")
         sys.exit(1)
 
-    print("Watching stamina (ptr4 + 0x154 current / 0x158 max).")
+    print(f"Watching stamina (ptr4 + {PTR4_STAMINA_CUR:#x} current / {PTR4_STAMINA_MAX:#x} max).")
     print("Sprint to deplete. Ctrl+C to stop.\n")
-    print(f"{'Current':>10}  {'Max':>10}  {'Ratio':>10}")
-    print("-" * 34)
 
     try:
         while True:
             memory.refresh()
-            if memory._last_ptr4:
-                current = _read_int32(memory.pid, memory._last_ptr4 + STAMINA_CURRENT)
-                maximum = _read_int32(memory.pid, memory._last_ptr4 + STAMINA_MAX)
-                ratio   = current / maximum if maximum > 0 else 0
-                print(f"{current:>10}  {maximum:>10}  {ratio:>10.3f}", end="\r")
+            # read_stamina() returns 1.0 both at full stamina and when it cannot read,
+            # so say which one this is rather than printing a confident 1.000.
+            if memory._last_ptr4 is None:
+                print("  [player not loaded]        ", end="\r")
+            else:
+                print(f"  stamina: {memory.read_stamina():.3f}", end="\r")
             time.sleep(0.1)
     except KeyboardInterrupt:
         print("\n\nDone.")

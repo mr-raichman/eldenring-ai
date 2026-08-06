@@ -15,7 +15,13 @@ import numpy as np
 
 from eldenring_ai.config import paths
 from eldenring_ai.config.runtime import GAME_KILL_POLL_INTERVAL
-from eldenring_ai.config.vision import BOSS_HP_REGION, BOSS_HP_CAP_FULL
+from eldenring_ai.config.vision import (
+    BOSS_HP_REGION,
+    BOSS_HP_CAP_FULL,
+    BOSS_HP_BRIGHTNESS_MIN,
+    BOSS_HP_SATURATION_MAX,
+    BOSS_HP_MEDIAN_WINDOW,
+)
 from eldenring_ai.config.offsets import (
     _WORLD_CHR_MAN_AOB,
     MARGIT_AREA_ID,
@@ -39,21 +45,19 @@ def reset_boss_hp_smoothing():
     _boss_hp_history = []
 
 def _read_boss_hp_bar(frame):
-    global _boss_hp_history
+    # No `global` needed: this only mutates the list, it never rebinds the name.
+    # reset_boss_hp_smoothing() does rebind it, which is why that one declares it.
     r    = BOSS_HP_REGION
     bar  = frame[r["y1"]:r["y2"], r["x1"]:r["x2"]]
     grey = cv2.cvtColor(bar, cv2.COLOR_BGR2GRAY)
-
-    BRIGHTNESS_THRESHOLD = 120
-    SATURATION_THRESHOLD = 60
 
     hsv          = cv2.cvtColor(bar, cv2.COLOR_BGR2HSV)
     col_max_grey = grey.max(axis=0)
     col_max_sat  = hsv[:, :, 1].max(axis=0)
 
     valid_cols = np.where(
-        (col_max_grey > BRIGHTNESS_THRESHOLD) &
-        (col_max_sat  < SATURATION_THRESHOLD)
+        (col_max_grey > BOSS_HP_BRIGHTNESS_MIN) &
+        (col_max_sat  < BOSS_HP_SATURATION_MAX)
     )[0]
 
     if len(valid_cols) == 0:
@@ -62,7 +66,7 @@ def _read_boss_hp_bar(frame):
         cap_x = valid_cols[0]
         raw   = min(1.0, round(cap_x / BOSS_HP_CAP_FULL, 3))
     _boss_hp_history.append(raw)
-    if len(_boss_hp_history) > 5:
+    if len(_boss_hp_history) > BOSS_HP_MEDIAN_WINDOW:
         _boss_hp_history.pop(0)
 
     return float(np.median(_boss_hp_history))

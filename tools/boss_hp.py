@@ -1,9 +1,10 @@
 """
 boss_hp.py - live Margit HP monitor.
 
-Uses the exact capture and detection pipeline as the training loop:
-cv2.VideoCapture reading /dev/video0 (the wf-recorder stream) and
-_read_boss_hp_bar() from io/memory.py. Prints a live-updating line.
+Reads the wf-recorder stream off V4L2_DEVICE and runs the training loop's own
+_read_boss_hp_bar() from io/memory.py, so the detection (region, thresholds and
+median smoothing) is identical. The capture is a plain grab rather than
+ScreenCapture's stack, so this shows the detector, not the observation.
 
 Run with the game open and wf-recorder streaming:
     uv run python tools/boss_hp.py

@@ -13,7 +13,6 @@ dependencies = [
     "opencv-python==4.13.0.92",
     "evdev==1.9.3",
     "tensorboard==2.20.0",
-    "tqdm==4.67.3",
     "rich>=15.0.0",
     "plotext>=5.3.2",
 ]
@@ -22,7 +21,7 @@ dependencies = [
 eldenring-train = "eldenring_ai.rl.train:train"
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff==0.16.1"]
 
 [build-system]
 requires = ["hatchling"]
@@ -41,6 +40,14 @@ torch = { index = "pytorch-cu128" }
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+[tool.ruff.lint]
+# Pinned rather than left on ruff's defaults, which widen between releases: the repo
+# was "sanitized with ruff" once and a later ruff reported 32 new findings in
+# untouched code. This is the correctness-focused set (pyflakes plus the E rules that
+# are not style), so a failure means something is wrong rather than differently
+# written. Widen it deliberately, in a commit that also fixes what it turns up.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 # Collect only real automated tests. Interactive diagnostics live in tools/
