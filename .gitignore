@@ -35,8 +35,7 @@ logs/*
 !models/.gitkeep
 !logs/.gitkeep
 
-# Interactive capture dumps
-tests/captures/
+# Interactive capture dumps now land in data/captures/, already covered by data/*
 
 # Generated knowledge graph (rebuildable; .graphifyignore stays tracked)
 graphify-out/

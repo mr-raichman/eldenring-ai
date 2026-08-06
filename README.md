@@ -83,9 +83,10 @@ game gives you nothing to work with:
   apart from real hardware.
 
 The observation is a Gymnasium `Dict` space: the frame stack plus 24-step histories of the
-actions it took, its own HP, Margit's HP and its stamina. I give it that recent history
-because a single frame can't express something like "I just committed to a heavy attack",
-and without it the agent has no way of knowing it is already locked into an animation.
+actions it took, its own HP, its stamina, and whether it damaged Margit on each of those
+steps (a hit flag per step, not his HP bar). I give it that recent history because a single
+frame can't express something like "I just committed to a heavy attack", and without it the
+agent has no way of knowing it is already locked into an animation.
 
 There are 12 discrete actions (move, sprint, guard, jump, dodge, heal, light attack, heavy
 attack and doing nothing), 6 of them held toggles instead of taps.
@@ -191,6 +192,9 @@ uv run python tools/restore_save.py
 
 # Unit tests (pure logic, no game required)
 uv run pytest
+
+# Linter (rule set pinned in pyproject.toml, so it doesn't drift between ruff releases)
+uv run ruff check eldenring_ai tools tests
 ```
 
 You can start the game yourself or just let the trainer launch it. It recovers from crashes on
@@ -223,11 +227,12 @@ tensorboard --logdir logs
 eldenring_ai/           the importable package
   config/             all tunable constants, split by concern
     training.py         hyperparameters, reward weights, episode/checkpoint limits
-    vision.py           frame stack, observation shape, HP-bar regions, devices,
-                        capture-pipeline settle delays
+    vision.py           frame stack, observation shape, HP-bar regions and the
+                        thresholds that read them, devices, capture settle delays
     offsets.py          WorldChrMan AOB signature + pointer-chain offsets
-    runtime.py          debug toggles, game-launch parameters, recovery timeouts
-                        and poll intervals, scripted-sequence calibration timings
+    runtime.py          debug toggles, step and button-press durations, game-launch
+                        parameters, recovery timeouts and poll intervals,
+                        scripted-sequence calibration timings
     paths.py            filesystem locations (relocatable except the game's save path)
   io/                 everything that touches the game
     capture.py          ScreenCapture (wf-recorder -> v4l2 -> OpenCV)
@@ -254,8 +259,9 @@ data/  models/  logs/  runtime artifacts and training outputs (gitignored)
 
 If you want to extend it, there are two rules I try to keep the project honest with:
 
-- `rl/environment.py` is the only module allowed to import across `io/`, `rl/` and `ui/`. The
-  `io/` modules know nothing about RL or rewards.
+- Only the two composition points, `rl/environment.py` and `rl/train.py`, import across
+  `io/`, `rl/` and `ui/`. Everything else stays in its own layer: `io/` knows nothing about
+  RL or rewards, and `ui/` knows nothing about `io/`.
 - Every tunable number lives in `config/`, no magic numbers in the logic. That includes the
   timeouts and the timings of the scripted movement sequences, which I measured by hand
   against the real game.

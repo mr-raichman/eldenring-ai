@@ -19,6 +19,5 @@ numpy==2.4.3
 opencv-python==4.13.0.92
 evdev==1.9.3
 tensorboard==2.20.0
-tqdm==4.67.3
 rich==15.0.0
 plotext==5.3.2
