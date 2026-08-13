@@ -33,12 +33,14 @@ def neutral(**overrides):
     return args
 
 
-def test_idle_step_applies_step_penalty():
+def test_idle_step_is_free():
+    # The per-step penalty was removed: nothing happening costs nothing. Standing still
+    # is now punished only by the opportunity cost of not landing a hit.
     boss_reward, player_punish, reward, events = compute_reward(**neutral())
     assert boss_reward == 0.0
     assert player_punish == 0.0
-    assert reward == -config.STEP_PENALTY
-    assert "STEP_PENALTY" in events
+    assert reward == 0
+    assert events == []
 
 
 def test_boss_hit_rewards_positively():
@@ -59,7 +61,7 @@ def test_sub_threshold_boss_drop_pays_nothing():
         **neutral(boss_hp=0.999, prev_boss_hp=1.0)
     )
     assert boss_reward == 0.0
-    assert reward == -config.STEP_PENALTY
+    assert reward == 0
     assert not any(e.startswith("BOSS_HIT") for e in events)
 
 

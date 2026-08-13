@@ -85,7 +85,6 @@ COUNTERS = [
 REWARD_COMPONENTS = [
     RewardComponent("boss_reward",     "Boss reward",    "reward/boss_total"),
     RewardComponent("player_punish",   "Player punish",  "reward/punish_total"),
-    RewardComponent("step_penalty",    "Step penalty",   "reward/step_penalty_total"),
     RewardComponent("stamina_penalty", "Stamina penalty", "reward/stamina_penalty_total"),
     RewardComponent("defeat_bonus",    "Defeat bonus",   "reward/defeat_bonus"),
     RewardComponent("net",             "Net",            "reward/net"),
@@ -101,7 +100,6 @@ EVENT_CATEGORIES = [
     EventCategory("combat_death", "Combat death", "DEATH",              "events/combat_death"),
     EventCategory("fall_death",  "Fall death",  "FALL_DEATH",           "events/fall_death"),
     EventCategory("zero_stamina", "Zero stamina", "ZERO STAMINA",       "events/zero_stamina"),
-    EventCategory("step_penalty", "Step penalty", "STEP_PENALTY",       "events/step_penalty"),
 ]
 
 # Per-episode quality measures derived from the step traces.

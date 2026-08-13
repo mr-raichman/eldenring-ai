@@ -86,8 +86,6 @@ class EpisodeRecorder:
         # Composition (see reward.py: exactly one branch fires per step).
         self.composition["boss_reward"] += boss_reward
         self.composition["player_punish"] -= player_punish
-        if any(e.startswith("STEP_PENALTY") for e in events):
-            self.composition["step_penalty"] -= config.STEP_PENALTY
         if any(e.startswith("ZERO STAMINA") for e in events):
             self.composition["stamina_penalty"] -= config.LOW_STAMINA_PUNISH
         self.composition["defeat_bonus"] += defeat_bonus

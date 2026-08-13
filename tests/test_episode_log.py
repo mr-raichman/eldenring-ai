@@ -35,10 +35,10 @@ def context(episode=1, **kw):
 
 
 def _feed_mixed(rec):
-    """A boss hit, a combo hit taken, an idle step-penalty, a zero-stamina step, a kill."""
+    """A boss hit, a combo hit taken, a free idle step, a zero-stamina step, a kill."""
     rec.record_step(0, "Light Attack", 1.0, 0.9, 0.8, 1.0, 0.8, 2.0, 0.0, 2.0, ["BOSS_HIT(deduction=1.00)"])
     rec.record_step(1, "No Action", 0.7, 0.9, 0.7, 1.0, 0.7, 0.0, 1.5, -1.5, ["HIT_TAKEN(vuln=1.00)", "MULTIPLE_HIT_PENALTY(x2)"])
-    rec.record_step(2, "Move Left", 0.7, 0.9, 0.6, 0.7, 0.6, 0.0, 0.0, -config.STEP_PENALTY, ["STEP_PENALTY"])
+    rec.record_step(2, "Move Left", 0.7, 0.9, 0.6, 0.7, 0.6, 0.0, 0.0, 0.0, [])
     rec.record_step(3, "No Action", 0.7, 0.9, 0.0, 0.7, 0.0, 0.0, 0.0, -config.LOW_STAMINA_PUNISH, ["ZERO STAMINA"])
     rec.record_step(4, "Light Attack", 0.7, 0.0, 0.9, 0.7, 0.9, 2.0, 0.0, 102.0, ["BOSS_HIT(deduction=1.00)"], defeat_bonus=100.0)
 
@@ -61,7 +61,6 @@ def test_event_counts_by_prefix(tmp_path, monkeypatch):
     assert rec.event_counts["boss_hits"] == 2
     assert rec.event_counts["hits_taken"] == 1
     assert rec.event_counts["multihit"] == 1
-    assert rec.event_counts["step_penalty"] == 1
     assert rec.event_counts["zero_stamina"] == 1
     assert rec.event_counts["combat_death"] == 0
     assert rec.event_counts["fall_death"] == 0
@@ -88,7 +87,7 @@ def test_derived_measures(tmp_path, monkeypatch):
 
 def test_derived_measures_empty_are_none(tmp_path, monkeypatch):
     rec = make_recorder(tmp_path, monkeypatch)
-    rec.record_step(0, "No Action", 1.0, 1.0, 0.5, 1.0, 0.5, 0.0, 0.0, -config.STEP_PENALTY, ["STEP_PENALTY"])
+    rec.record_step(0, "No Action", 1.0, 1.0, 0.5, 1.0, 0.5, 0.0, 0.0, 0.0, [])
     d = rec.derived_values()
     assert d["stamina_at_boss_hit_mean"] is None
     assert d["hits_taken_per_boss_hit"] is None

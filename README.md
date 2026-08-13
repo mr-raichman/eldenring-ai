@@ -91,12 +91,20 @@ agent has no way of knowing it is already locked into an animation.
 There are 12 discrete actions (move, sprint, guard, jump, dodge, heal, light attack, heavy
 attack and doing nothing), 6 of them held toggles instead of taps.
 
-The reward is shaped from the damage it deals and the damage it takes, plus a step penalty so
-it doesn't just stand there, a stamina penalty for swinging into exhaustion, a bonus for
-dodging right before landing a hit, and penalties for attacking greedily and for eating
-several hits in a row. Fall deaths and combat deaths are scored separately, because falling
-off the arena is a completely different mistake from losing a fight. Beating Margit is worth
-a big one-off bonus, which so far is theoretical.
+The reward is shaped from the damage it deals and the damage it takes, plus a stamina
+penalty for swinging into exhaustion, a bonus for dodging right before landing a hit, and
+penalties for attacking greedily and for eating several hits in a row. Fall deaths and
+combat deaths are scored separately, because falling off the arena is a completely
+different mistake from losing a fight. Beating Margit is worth a big one-off bonus, which
+so far is theoretical.
+
+What the weights actually buy is one number: **how much a hit taken costs against what a
+hit landed pays**. A kill needs about 36 sword hits and four of Margit's kill you, so the
+game's own rate is roughly 1 to 9 against trading blows. The reward's rate is deliberately
+gentler than that, currently 2 to 1, because I want it to keep attacking rather than learn
+to run away. There used to be a per-step penalty here as well, to stop it standing still;
+it turned out to be paying most of the incentive to attack (a hit switched it off for the
+next 24 steps) and scoring long episodes worse than short ones, so it is gone.
 
 Episodes run from entering the fog gate until it dies or wins, with no step limit. The
 environment handles the whole loop on its own: it walks the character from the grace to the
@@ -210,9 +218,14 @@ Each run also writes its own folder under `data/runs/<timestamp>/`:
 
 | File                    | Contents                                                                                     |
 | ----------------------- | -------------------------------------------------------------------------------------------- |
+| `config.json`           | every tunable that produced this run, so its numbers can be attributed months later          |
 | `episode_records.jsonl` | one row per episode: reward composition, event rates, derived quality measures, PPO snapshot |
 | `step_records.csv`      | per-step reward and the reason for it, for the most recent episodes                          |
 | `events.log`            | recovery events, aborts, arena-confirmation failures                                         |
+
+`config.json` is written once per run and never read back, so `eldenring_ai/config/` stays
+the only place a value is set. Resuming into a run whose config you edited in the meantime
+keeps the original and writes a second, timestamped one beside it.
 
 Resuming a run continues the latest folder instead of starting a new one, so a crash doesn't
 split a training run into pieces. TensorBoard logs go to `logs/`:

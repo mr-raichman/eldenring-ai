@@ -71,18 +71,22 @@ def compute_reward(
     else:
         boss_reward = 0.0
 
-    # STAMINA AND INACTIVITY PUNISH
+    # STAMINA PUNISH
+    #
+    # There used to be a per-step penalty here, suppressed whenever boss_hp_history held
+    # a hit. It was the second-largest term in the reward (24.6% of the signal) and it
+    # was answering the wrong question twice: the 24 steps of immunity a hit bought were
+    # worth 0.60, i.e. 38% of what the hit itself paid, so most of the incentive to
+    # attack was the clock switching off rather than the damage. It also priced survival
+    # negatively - net episode reward correlated -0.475 with episode length, so the
+    # longer the agent lived the worse it scored.
     if boss_reward == 0.0 and player_punish == 0.0:
         if stamina == 0:
             reward = -config.LOW_STAMINA_PUNISH
             events.append("ZERO STAMINA")
-        elif sum(boss_hp_history) == 0:
-            reward = -config.STEP_PENALTY
-            events.append("STEP_PENALTY")
         else:
             reward = 0
     else:
         reward = boss_reward - player_punish
-
 
     return boss_reward, player_punish, reward, events

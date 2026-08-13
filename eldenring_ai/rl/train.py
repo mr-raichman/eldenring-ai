@@ -5,6 +5,7 @@ the latest checkpoint, and runs the learn loop.
 """
 
 import glob
+import json
 import os
 import time
 import zipfile
@@ -153,6 +154,36 @@ def find_latest_checkpoint():
     return None
 
 
+def _snapshot_config(run_dir):
+    """Write the tunables that produced this run next to its records.
+
+    Output only, never read back: `config/` stays the single source of truth, and this
+    file exists so that months later the run's numbers can be attributed to the weights
+    that made them. Comparing three runs used to mean inferring their config from git
+    timestamps, which is why none of their differences could be attributed to anything.
+
+    A resume keeps the original snapshot and adds a timestamped second one only if
+    something changed, because a run directory is written across restarts (the run of
+    2026-08-06 restarted twice) and a config edited between them must not read as one
+    configuration.
+    """
+    snapshot = {
+        name: value
+        for name, value in vars(config).items()
+        if name.isupper()
+        and not name.startswith("_")
+        and isinstance(value, (bool, int, float, str, list, dict))
+    }
+    body = json.dumps(snapshot, indent=2, sort_keys=True)
+
+    path = run_dir / "config.json"
+    if path.exists():
+        if path.read_text() == body:
+            return
+        path = run_dir / f"config-{time.strftime('%Y-%m-%d_%H-%M-%S')}.json"
+    path.write_text(body)
+
+
 def _latest_run_dir():
     """The most recent run directory under data/runs/, or None."""
     if not paths.RUNS_DIR.exists():
@@ -179,6 +210,7 @@ def train():
         run_dir = _latest_run_dir() or (paths.RUNS_DIR / time.strftime("%Y-%m-%d_%H-%M-%S"))
     run_dir.mkdir(parents=True, exist_ok=True)
     paths.use_run_dir(run_dir)
+    _snapshot_config(run_dir)
 
     env = EldenRingEnv()
 
@@ -198,6 +230,25 @@ def train():
         model.batch_size    = config.BATCH_SIZE
         model.ent_coef      = config.ENT_COEF
         model.target_kl     = config.TARGET_KL
+
+        # n_steps needs the buffer resized with it, unlike every value above. SB3 sizes
+        # rollout_buffer once in _setup_model(), collect_rollouts() stops after
+        # model.n_steps transitions, and RolloutBuffer.get() opens with `assert
+        # self.full` - so a checkpoint saved at one n_steps, resumed at a smaller one,
+        # is an AssertionError on the first update rather than a silent mismatch.
+        if model.n_steps != config.N_STEPS:
+            print(f"Resizing rollout buffer: n_steps {model.n_steps} -> {config.N_STEPS}")
+            model.n_steps = config.N_STEPS
+            model.rollout_buffer = model.rollout_buffer_class(
+                config.N_STEPS,
+                model.observation_space,
+                model.action_space,
+                device=model.device,
+                gamma=config.GAMMA,
+                gae_lambda=model.gae_lambda,
+                n_envs=model.n_envs,
+                **model.rollout_buffer_kwargs,
+            )
     else:
         model = PPO(
             policy="MultiInputPolicy",

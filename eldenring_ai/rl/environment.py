@@ -322,7 +322,7 @@ class EldenRingEnv(gymnasium.Env):
         # update history buffers and previous-step values
         self._hp_history.append(player_hp)
         # Same threshold the reward uses, for the same reason: a drop too small to be
-        # a real hit must not suppress the step penalty or arm the greedy window.
+        # a real hit must not arm the greedy window.
         if self.prev_boss_hp - boss_hp >= config.BOSS_HIT_MIN_DELTA:
             self._boss_hp_history.append(1)
         else:
