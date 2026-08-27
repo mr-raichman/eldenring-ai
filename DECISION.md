@@ -62,5 +62,6 @@ contemporaneous entries.
 |---|---|---|
 | ongoing | Nothing under `data/`, `models/` or `logs/` is deleted by anything but Teo | Gitignored, real training progress, exists in no other copy. |
 | 2026-08-13 | Pre-C1 checkpoints (10k-80k) and their TensorBoard logs deleted | Their value head is fitted to an exchange rate that no longer exists, so resuming from one starts from a value function wrong by construction. Keeping the logs would put two reward functions on one TensorBoard axis. |
+| 2026-08-27 | All 101 checkpoints and the 1M run's TensorBoard log deleted | Same reason as 2026-08-13, one round later: every value head is fitted to `BOSS_PARAMETER = 1`, which Round 4 replaced, so resuming from one starts from a value function wrong by construction. Nothing unique lost - the per-episode `train/*` stats live on in `episode_records.jsonl`, and `rollout/ep_rew_mean` is recomputable from `net_reward`. |
 | 2026-08-13 | The orphaned 2026-07-23 records were moved into `data/runs/`, not deleted | Round 1 had them down as duplicates. They are not: they are the only copy of a run two days older than the oldest run directory. |
 | ongoing | `data/eldenring-save-backup.sl2` has exactly one copy, and that is accepted | 29 MB, the canonical character state. A second copy is deferred with the condition: any near-miss. |
