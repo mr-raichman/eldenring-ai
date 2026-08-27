@@ -100,6 +100,7 @@ EVENT_CATEGORIES = [
     EventCategory("combat_death", "Combat death", "DEATH",              "events/combat_death"),
     EventCategory("fall_death",  "Fall death",  "FALL_DEATH",           "events/fall_death"),
     EventCategory("zero_stamina", "Zero stamina", "ZERO STAMINA",       "events/zero_stamina"),
+    EventCategory("attack_softcap", "Atk softcap", "ATTACK_SOFTCAP",     "events/attack_softcap"),
 ]
 
 # Per-episode quality measures derived from the step traces.

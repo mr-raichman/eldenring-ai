@@ -15,6 +15,8 @@ from eldenring_ai.rl.reward import compute_reward
 
 HISTORY = config.HISTORY_LENGTH
 DODGE_ID = input.ACTIONS["Dodge"].action_id  # index checked as step[8] in reward.py
+LIGHT_ID = input.ACTIONS["Light Attack"].action_id   # step[10] in reward.py
+HEAVY_ID = input.ACTIONS["Heavy Attack"].action_id   # step[11] in reward.py
 
 
 def neutral(**overrides):
@@ -73,6 +75,62 @@ def test_dodge_before_boss_hit_gets_bonus():
     )
     assert boss_reward == pytest.approx(config.BOSS_PARAMETER * config.DODGE_REWARD)
     assert "DODGE_REWARD" in events
+
+
+def _attacking_history(n_attacks, action_id=None):
+    """A history holding n_attacks presses, the rest idle."""
+    actions = [[0.0] * input.N_ACTIONS for _ in range(HISTORY)]
+    for i in range(n_attacks):
+        actions[i][action_id if action_id is not None else LIGHT_ID] = 1.0
+    return actions
+
+
+def test_attack_softcap_inert_at_and_below_the_threshold():
+    # The cap is a ceiling, not a per-attack tax: the Nth attack is still paid in full.
+    for n in (0, config.ATTACK_SOFTCAP_N):
+        boss_reward, _, _, events = compute_reward(
+            **neutral(boss_hp=0.9, prev_boss_hp=1.0, action_history=_attacking_history(n))
+        )
+        assert boss_reward == pytest.approx(config.BOSS_PARAMETER), f"n={n}"
+        assert not any(e.startswith("ATTACK_SOFTCAP") for e in events), f"n={n}"
+
+
+def test_attack_softcap_bites_above_the_threshold():
+    n = config.ATTACK_SOFTCAP_N * 2
+    boss_reward, _, _, events = compute_reward(
+        **neutral(boss_hp=0.9, prev_boss_hp=1.0, action_history=_attacking_history(n))
+    )
+    expected = config.BOSS_PARAMETER * (config.ATTACK_SOFTCAP_N / n) ** config.ATTACK_SOFTCAP_EXP
+    assert boss_reward == pytest.approx(expected)
+    assert any(e.startswith("ATTACK_SOFTCAP") for e in events)
+
+
+def test_attack_softcap_makes_total_hit_reward_turn_over():
+    """The whole point of EXP > 1: total reward must FALL past the cap, not flatten.
+
+    1/(1+k*n) saturates and leaves the optimum at a corner. This is the test that
+    distinguishes the shape that works from the one that does not.
+    """
+    def total(n):
+        boss_reward, _, _, _ = compute_reward(
+            **neutral(boss_hp=0.9, prev_boss_hp=1.0, action_history=_attacking_history(n))
+        )
+        return n * boss_reward       # hits landed scale with attacks pressed
+
+    peak = total(config.ATTACK_SOFTCAP_N)
+    assert total(config.ATTACK_SOFTCAP_N * 2) < peak
+    assert total(config.ATTACK_SOFTCAP_N * 3) < total(config.ATTACK_SOFTCAP_N * 2)
+
+
+def test_attack_softcap_counts_heavy_attacks_too():
+    n = config.ATTACK_SOFTCAP_N * 2
+    light, _, _, _ = compute_reward(
+        **neutral(boss_hp=0.9, prev_boss_hp=1.0, action_history=_attacking_history(n, LIGHT_ID))
+    )
+    heavy, _, _, _ = compute_reward(
+        **neutral(boss_hp=0.9, prev_boss_hp=1.0, action_history=_attacking_history(n, HEAVY_ID))
+    )
+    assert light == pytest.approx(heavy)
 
 
 def test_isolated_hit_is_punished():

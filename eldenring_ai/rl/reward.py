@@ -68,6 +68,17 @@ def compute_reward(
         if any(step[8] == 1.0 for step in list(action_history)[-config.DODGE_WINDOW:]):
             boss_reward *= config.DODGE_REWARD
             events.append("DODGE_REWARD")
+
+        # ATTACK SOFTCAP: hits past ATTACK_SOFTCAP_N attacks in the history window pay a
+        # falling share of the reward, so the total turns over rather than flattening. That
+        # is the only way the optimum lands anywhere but a corner - see config/training.py.
+        # Indices 10 and 11 are Light and Heavy Attack, the same convention as step[8].
+        n_attacks = sum(
+            1 for step in action_history if step[10] == 1.0 or step[11] == 1.0
+        )
+        if n_attacks > config.ATTACK_SOFTCAP_N:
+            boss_reward *= (config.ATTACK_SOFTCAP_N / n_attacks) ** config.ATTACK_SOFTCAP_EXP
+            events.append(f"ATTACK_SOFTCAP(n={n_attacks})")
     else:
         boss_reward = 0.0
 
