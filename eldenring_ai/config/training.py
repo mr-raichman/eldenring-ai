@@ -116,6 +116,14 @@ ENT_COEF = 0.01
 TARGET_KL = 0.03
 
 # Training run / checkpointing
-TOTAL_TIMESTEPS = 1_000_000
+#
+# 2M. The 1M run of 2026-08-13 was not budget-limited - it plateaued at 250k and the last
+# 750k bought nothing - but it was optimising a reward that paid to not attack. Round 4
+# repriced that, so the budget is worth doubling for the first time.
+#
+# Two consequences of the doubling, both accepted rather than fixed: at ~8,875 env steps
+# per hour this is **225 hours, 9.4 days** of wall clock, and the LR schedule reaches
+# LR_MIN at 850,300 steps, so 57% of the run trains at the 3e-5 floor.
+TOTAL_TIMESTEPS = 2_000_000
 CHECKPOINT_FREQ = 10_000
 CHECKPOINT_FREQ_MINI = 1_000

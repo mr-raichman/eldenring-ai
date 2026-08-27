@@ -341,6 +341,10 @@ here combined.
 **H. Do not raise `TOTAL_TIMESTEPS` until at least A or B has landed.** Nothing in this run
 suggests the budget is the constraint, and everything in it suggests the objective is.
 
+> **Answered 2026-08-27.** Round 4 repriced the objective (`BOSS_PARAMETER` 1 -> 4.5, plus
+> the attack softcap), which is the condition this asked for, and Teo then raised the budget
+> to 2,000,000. See `DECISION.md`.
+
 ---
 
 ## Verified against inferred

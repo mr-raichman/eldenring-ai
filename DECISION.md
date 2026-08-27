@@ -34,6 +34,7 @@ contemporaneous entries.
 | date | decision | why |
 |---|---|---|
 | 2026-08-13 | `N_STEPS` 2048 -> 1024, `BATCH_SIZE` stays 512 | 2048 bought 39 policy updates in a 17-hour run. This setup does not have the sample budget the usual rollout sizes assume. Lowering the batch alongside it was rejected: two changes at once. |
+| 2026-08-27 | `TOTAL_TIMESTEPS` 1M -> **2M** | The analysis document's proposal H said not to raise it until the objective was fixed, on the grounds that the 1M run plateaued at 250k and was never budget-limited. Round 4 fixed the objective, so the condition is met. **Consequence, accepted:** 225 hours of wall clock (9.4 days), and 57% of the run trains at the `LR_MIN` floor, since the schedule reaches 3e-5 at 850,300 steps. |
 | 2026-08-27 | `GAMMA` stays 0.96 for this round | Its 5.3 s horizon puts a kill (~1100 steps) permanently out of reach, but raising it is a second variable in a round whose whole purpose is to read one. Recorded as open, not settled. |
 
 ## Scope and method
