@@ -4,10 +4,10 @@
 goes with it, because a decision without one gets remade. Nothing here is rewritten: where a
 later decision reverses an earlier one, both stay and the later one says what it reverses.
 
-This file is the index. The measurements behind a row live in `PLAN.md` (the round that took
+This file is the index. The measurements behind a row live in `IMPLEMENTATION_PLAN.md` (the round that took
 it) or in the comment beside the constant; they are not repeated here.
 
-**Created 2026-08-27**, backfilled from `PLAN.md` rounds 1-4 and the comments in
+**Created 2026-08-27**, backfilled from `IMPLEMENTATION_PLAN.md` rounds 1-4 and the comments in
 `eldenring_ai/config/`. Rows dated before that are reconstructions from those records, not
 contemporaneous entries.
 
