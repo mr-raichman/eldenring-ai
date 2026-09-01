@@ -124,6 +124,9 @@ It works end to end and trains unattended for long runs. It's an active experime
 not a solved benchmark, so treat the reward shaping and the hyperparameters as things I'm
 still tuning rather than a recipe that is known to converge.
 
+Each long run gets written up in [`analysis/`](analysis/): what the numbers said, what broke
+and what the next round changed because of it.
+
 ## Prerequisites
 
 This is the honest part: I built this against my own machine and it is **not portable as-is**.
