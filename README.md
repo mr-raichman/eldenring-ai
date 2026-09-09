@@ -6,9 +6,11 @@ with a level one Vagabond and no shield, so the only way to win is to actually l
 It reads the screen, reads the game's memory and plays through a virtual gamepad. No mods, no
 API, nothing the game offers on purpose.
 
+<!-- PENDENT: descomentar quan hi hagi docs/media/fight.gif i l'enllac real
 ![The agent fighting Margit](docs/media/fight.gif)
 
 *[Full fight on YouTube](https://youtube.com/watch?v=PENDENT)*
+-->
 
 ## No API, no mods
 
@@ -33,7 +35,8 @@ and the game is something I had to build.
 
 **Vision.** `wf-recorder` streams the Wayland output into a `v4l2loopback` device and OpenCV
 reads the frames back out of it. They get downscaled to 256x256 greyscale, which is what the
-network actually sees.
+network actually sees. The aspect ratio is not preserved: a 16:9 frame is squashed into a
+square, and the policy learns on the squashed version.
 
 ![The colour frame and the 256x256 greyscale view the model gets](docs/media/vision.png)
 
@@ -119,7 +122,9 @@ which keeps every episode starting from an identical character state instead of 
 There is a live dashboard that redraws at the end of every episode, with the reward composition,
 the event rates and the PPO metrics.
 
+<!-- PENDENT: descomentar quan hi hagi docs/media/dashboard.png
 ![The training dashboard](docs/media/dashboard.png)
+-->
 
 Every run also writes its own folder with the config that produced it, one row per episode, the
 per-step rewards and the reason for each, and a log of every recovery and abort.
