@@ -43,6 +43,5 @@ graphify-out/
 # OS files
 .DS_Store
 
-# Claude
 CLAUDE.md
 claude/
