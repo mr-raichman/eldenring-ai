@@ -1,58 +1,20 @@
-# Elden Ring AI (G.A.L.E.) by Teo Raichman
+# Elden Ring AI (G.A.L.E.)
 
-I started this project with the only goal in mind of learning Linux, Python, machine learning
-and all that it entails. Even though the project is fully capable of training models, I'm still
-tweaking parameters and the reward function in search of a Margit defeat, so I'm open to
-recommendations to improve it. It's not my main project, so I don't dedicate myself to it every
-day, just when I feel like it.
+A reinforcement learning agent learning to beat **Margit, The Fell Omen** in **Elden Ring**,
+with a level one Vagabond and no shield, so the only way to win is to actually learn to dodge.
 
-## General description
+It reads the screen, reads the game's memory and plays through a virtual gamepad. No mods, no
+API, nothing the game offers on purpose.
 
-This is a reinforcement learning agent called GALE with the goal of defeating **Margit, The
-Fell Omen** in **Elden Ring**. It is trained using PPO, simulating inputs via a virtual
-controller and taking images and some memory readings as inputs.
+![The agent fighting Margit](docs/media/fight.gif)
 
-The idea is to teach it to play as a human would, using only vision. However, due to the
-complexity of understanding what each stat bar means in-game and the inability of the model to
-have memory, I decided to also implement memory readings and a rolling history of data such as
-frames, boss HP, player HP, stamina, actions executed... so that it simulates what a human
-would have in mind while playing, as well as making it easier for it to relate reward to action
-choice once it starts detecting the patterns in its inputs.
+*[Full fight on YouTube](https://youtube.com/watch?v=PENDENT)*
 
-## Philosophy and gaming strategy
+## No API, no mods
 
-### Character
-
-I wanted the most basic possible build, so I chose Vagabond, a sword and shield class, at level
-one. The character has not been leveled up, as I want it to really be able to dodge and decide
-when to attack, not to win by chance because it's overpowered but to win by pure skill.
-
-After some months of building the project and training, I opted for discarding the shield. Even
-though parrying and attack blocking gave good results, it kinda took the focus away from
-dodging, which is the coolest ability I wanted the AI to learn. And after training the AI on a
-two-handed sword by mistake, I chose to keep it as permanent, consequently lowering the action
-space.
-
-### Micro episodes
-
-The reward function is the most complex thing in the project and the one decision that has made
-me think the most, and I'm still refining it. My current philosophy about it I call "micro
-episodes", and it refers to small time periods (currently of 4.8s) that contain all the
-information needed to execute the next action.
-
-This comes from not thinking about defeating Margit at all, but just about dealing damage
-without being hit, indefinitely, which is in fact the correct strategy when it comes to Souls
-games. It doesn't really matter what you did or what you are going to do, because dodging now
-won't directly affect a decision 10s later, as its outcome will already carry all the
-information that step needs.
-
-The reward function and the gamma parameter of 0.96, as well as the vision and stats inputs,
-all refer to this time period (micro episode). This way, actions are only judged by the current
-context, without adding anything about later or previous info that may contaminate the
-understanding of the patterns. Choosing heal right before being hit has to be punished, but
-choosing heal and being hit 10 seconds later doesn't have any relation.
-
-## How it works
+Elden Ring gives you nothing to build an agent on. There is no observation to read, no action
+to send and no way to know whether you are even in the fight. Every channel between the agent
+and the game is something I had to build.
 
 ```
    wf-recorder -> v4l2loopback -> OpenCV        /proc/<pid>/mem
@@ -69,237 +31,116 @@ choosing heal and being hit 10 seconds later doesn't have any relation.
                               Elden Ring
 ```
 
-There are three channels connecting the agent to the game, and each one exists because the
-game gives you nothing to work with:
+**Vision.** `wf-recorder` streams the Wayland output into a `v4l2loopback` device and OpenCV
+reads the frames back out of it. They get downscaled to 256x256 greyscale, which is what the
+network actually sees.
 
-- **Vision** - `wf-recorder` streams the Wayland output into a `v4l2loopback` device and
-  OpenCV reads the frames from there. I downscale them to a stack of 12 grayscale 256x256
-  frames. The boss HP bar I read from pixels, because I never found a reliable way to reach
-  it in memory.
-- **State** - player HP, stamina, readiness and the current area ID are read straight out of
-  the game process through `/proc/<pid>/mem`, walking a pointer chain from a `WorldChrMan`
-  base address that I find with an AOB (array-of-bytes) signature scan.
-- **Control** - a virtual Xbox 360 gamepad made with evdev `UInput`. The game can't tell it
-  apart from real hardware.
+![The colour frame and the 256x256 greyscale view the model gets](docs/media/vision.png)
 
-The observation is a Gymnasium `Dict` space: the frame stack plus 24-step histories of the
-actions it took, its own HP, its stamina, and whether it damaged Margit on each of those
-steps (a hit flag per step, not his HP bar). I give it that recent history because a single
-frame can't express something like "I just committed to a heavy attack", and without it the
-agent has no way of knowing it is already locked into an animation.
+**State.** Player health, stamina, readiness and the current area ID come straight out of the
+game process through `/proc/<pid>/mem`, walking a pointer chain from a `WorldChrMan` base
+address I locate with an AOB signature scan.
 
-There are 12 discrete actions (move, sprint, guard, jump, dodge, heal, light attack, heavy
-attack and doing nothing), 6 of them held toggles instead of taps.
+Margit's health is the exception: I never found a reliable pointer to it, so I read it from
+pixels instead, off the bar itself. That is why the vision config carries brightness and
+saturation thresholds. They are a bar-reading algorithm, not display settings.
 
-The reward is shaped from the damage it deals and the damage it takes, plus a stamina
-penalty for swinging into exhaustion, a bonus for dodging right before landing a hit, and
-penalties for attacking greedily and for eating several hits in a row. Fall deaths and
-combat deaths are scored separately, because falling off the arena is a completely
-different mistake from losing a fight. Beating Margit is worth a big one-off bonus, which
-so far is theoretical.
+![The boss HP bar region the detector reads](docs/media/boss_hp.png)
 
-What the weights actually buy is one number: **how much a hit taken costs against what a
-hit landed pays**. A kill needs about 36 sword hits and four of Margit's kill you, so the
-game's own rate is roughly 1 to 9 against trading blows. The reward's rate is deliberately
-gentler than that, currently 2 to 1, because I want it to keep attacking rather than learn
-to run away. There used to be a per-step penalty here as well, to stop it standing still;
-it turned out to be paying most of the incentive to attack (a hit switched it off for the
-next 24 steps) and scoring long episodes worse than short ones, so it is gone.
+**Control.** A virtual Xbox 360 pad built with evdev `UInput`. The game cannot tell it apart
+from real hardware. Twelve discrete actions: move, sprint, guard, jump, dodge, heal, light
+attack, heavy attack and doing nothing, six of them held toggles rather than taps.
 
-Episodes run from entering the fog gate until it dies or wins, with no step limit. The
-environment handles the whole loop on its own: it walks the character from the grace to the
-fog gate, confirms it really is inside the arena before starting, and on death it waits out
-the respawn and walks back. If the game crashes it relaunches it through Steam, re-scans for
-the pointer and carries on.
+## What it sees
 
-A win doesn't end training, because what I want is for it to master Margit, not to beat him
-once. It does leave Margit permanently dead in the save though, so on a victory the
-environment kills the game, copies the backup save from `data/` over the live one and
-relaunches. It restores the same way after a crash, which keeps every episode starting from
-an identical character state instead of slowly drifting.
+A single frame cannot express "I just committed to a heavy attack". Without that, the agent has
+no way of knowing it is already locked into an animation it cannot cancel.
+
+So the observation is a stack of 12 frames rather than one, plus 24-step histories of the
+actions it took, its own health, its stamina, and whether it damaged Margit on each of those
+steps.
+
+![The twelve frame stack the policy receives](docs/media/frames.png)
+
+## How it decides
+
+### The character
+
+I wanted the most basic build possible, so I picked Vagabond at level one and never levelled it
+up. It has to win by actually dodging, not by being overpowered.
+
+I started with a shield. Parrying and blocking gave good results, but they took the focus away
+from dodging, which is the interesting thing to learn, so I dropped it. Then I trained it on a
+two-handed sword by mistake and kept it, because it shrinks the action space for free.
+
+### Micro episodes
+
+The reward function is the hardest part of the project and the one I have rewritten the most.
+My current framing I call micro episodes: short windows, currently 4.8 seconds, that contain
+everything needed to judge the next action.
+
+It comes from not thinking about defeating Margit at all, but about dealing damage without being
+hit, indefinitely, which is in fact the correct way to play a Souls game. Dodging now does not
+meaningfully affect a decision ten seconds from now, because by then the outcome already carries
+whatever information that step needs.
+
+The gamma of 0.96, the vision window and the stat histories all match that window. Actions get
+judged on their own context. Healing right before being hit has to be punished; healing and
+being hit ten seconds later has nothing to do with it.
+
+### The one number underneath it
+
+All the reward weights come down to a single ratio: **how much a hit taken costs against what a
+hit landed pays**. Killing Margit takes about 36 sword hits, and four of his kill me. The game's
+own rate is therefore roughly 1 to 9 against trading blows.
+
+The reward is deliberately gentler than the game, currently 2 to 1, because an agent that
+respects the real rate learns to run away instead of fighting.
+
+There used to be a per-step penalty here too, to stop it standing still. It turned out to be
+paying most of the incentive to attack, since landing a hit switched the penalty off for the
+next 24 steps, and it scored long episodes worse than short ones, which means the reward was
+ranking survival as failure. It is gone.
+
+## Running unattended
+
+Episodes run from the fog gate until it dies or wins, with no step limit. The environment handles
+the entire loop by itself: it walks the character from the grace to the fog gate, confirms it
+really is inside the arena before starting, and on death waits out the respawn and walks back. If
+the game crashes it relaunches it through Steam, re-scans for the pointer and carries on.
+
+A win does not end training, because the goal is mastering Margit rather than beating him once.
+It does leave him permanently dead in the save, so on a victory the environment kills the game,
+copies the backup save over the live one and relaunches. It recovers the same way after a crash,
+which keeps every episode starting from an identical character state instead of slowly drifting.
+
+## Watching it learn
+
+There is a live dashboard that redraws at the end of every episode, with the reward composition,
+the event rates and the PPO metrics.
+
+![The training dashboard](docs/media/dashboard.png)
+
+Every run also writes its own folder with the config that produced it, one row per episode, the
+per-step rewards and the reason for each, and a log of every recovery and abort.
+
+Each long run gets written up in [`analysis/`](analysis/): what the numbers said, what broke, and
+what the next round changed because of it.
 
 ## Status
 
-It works end to end and trains unattended for long runs. It's an active experiment though,
-not a solved benchmark, so treat the reward shaping and the hyperparameters as things I'm
-still tuning rather than a recipe that is known to converge.
+It trains unattended for long runs and recovers from crashes on its own. It has not beaten Margit
+yet. The infrastructure is done and what is left is the reward function and the hyperparameters,
+which I am still tuning, so treat them as an open experiment rather than a recipe known to
+converge.
 
-Each long run gets written up in [`analysis/`](analysis/): what the numbers said, what broke
-and what the next round changed because of it.
+Suggestions are welcome.
 
-## Prerequisites
+## Running it yourself
 
-This is the honest part: I built this against my own machine and it is **not portable as-is**.
-Getting it running somewhere else means changing config, not just installing it.
-
-- **OS**: Arch Linux (or similar) with a **Wayland** session. Developed on Hyprland.
-- **Capture**: [`wf-recorder`](https://github.com/ammen99/wf-recorder) plus a
-  **v4l2loopback** device (default `/dev/video0`).
-- **Game**: _Elden Ring_ installed and launchable via **Steam** (app id `1245620`), running on
-  the configured Wayland output (default `HDMI-A-1`).
-- **GPU**: a CUDA-capable GPU. PyTorch is pinned to the `+cu128` build.
-- **Python**: 3.12, provisioned automatically by uv (see `.python-version`).
-- **[uv](https://docs.astral.sh/uv/)**: manages the environment and dependencies.
-- A **save file** parked at the grace before Margit. The agent starts every episode from there.
-
-At the very least you'll have to adjust these to match your machine, all of them in
-`eldenring_ai/config/`:
-
-| What                                | Where        |
-| ----------------------------------- | ------------ |
-| Wayland output name, capture device | `vision.py`  |
-| Boss/player HP-bar pixel regions    | `vision.py`  |
-| Memory offsets and AOB signature    | `offsets.py` |
-| Walk-to-fog route timings           | `runtime.py` |
-| Elden Ring save-file location       | `paths.py`   |
-
-The memory offsets are the fragile part: I reverse-engineered them against one game build, so
-a patch can invalidate them at any moment.
-
-## Setup
-
-```bash
-uv sync
-```
-
-That creates `.venv/`, provisions Python 3.12 and installs everything from the lockfile,
-including the CUDA build of PyTorch.
-
-If you prefer plain pip, that works too:
-
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-```
-
-Load the loopback device before capturing. The capture layer tries to do it by itself as well,
-but it's one less thing to go wrong:
-
-```bash
-sudo modprobe v4l2loopback devices=1 card_label=capture exclusive_caps=1
-```
-
-## Running
-
-Everything runs from the repository root. `uv run` executes inside `.venv` without you having
-to activate it.
-
-```bash
-# Train (auto-resumes from the latest checkpoint in models/)
-uv run eldenring-train
-uv run python -m eldenring_ai.rl.train   # equivalent
-
-# Manual gamepad REPL - test inputs by hand, no training
-uv run python tools/controller_repl.py
-
-# Live diagnostics (these need the game running)
-uv run python tools/boss_hp.py         # Margit HP
-uv run python tools/area_id.py         # area ID / fog-gate check
-uv run python tools/stamina.py         # stamina
-uv run python tools/capture_frames.py  # dump the AI frame stack
-
-# Kill the game, restore the backup save, relaunch - the same restore training does
-uv run python tools/restore_save.py
-
-# Unit tests (pure logic, no game required)
-uv run pytest
-
-# Linter (rule set pinned in pyproject.toml, so it doesn't drift between ruff releases)
-uv run ruff check eldenring_ai tools tests
-```
-
-You can start the game yourself or just let the trainer launch it. It recovers from crashes on
-its own and checkpoints to `models/` every so often, so you can leave it running and come back
-to it later.
-
-### What you get while it runs
-
-There's a live dashboard that redraws in place at the end of every episode, with the reward
-composition, the event rates and the PPO metrics.
-
-Each run also writes its own folder under `data/runs/<timestamp>/`:
-
-| File                    | Contents                                                                                     |
-| ----------------------- | -------------------------------------------------------------------------------------------- |
-| `config.json`           | every tunable that produced this run, so its numbers can be attributed months later          |
-| `episode_records.jsonl` | one row per episode: reward composition, event rates, derived quality measures, PPO snapshot |
-| `step_records.csv`      | per-step reward and the reason for it, for the most recent episodes                          |
-| `events.log`            | recovery events, aborts, arena-confirmation failures                                         |
-
-`config.json` is written once per run and never read back, so `eldenring_ai/config/` stays
-the only place a value is set. Resuming into a run whose config you edited in the meantime
-keeps the original and writes a second, timestamped one beside it.
-
-Resuming a run continues the latest folder instead of starting a new one, so a crash doesn't
-split a training run into pieces. TensorBoard logs go to `logs/`:
-
-```bash
-tensorboard --logdir logs
-```
-
-## Project layout
-
-```
-eldenring_ai/           the importable package
-  config/             all tunable constants, split by concern
-    training.py         hyperparameters, reward weights, episode/checkpoint limits
-    vision.py           frame stack, observation shape, HP-bar regions and the
-                        thresholds that read them, devices, capture settle delays
-    offsets.py          WorldChrMan AOB signature + pointer-chain offsets
-    runtime.py          debug toggles, step and button-press durations, game-launch
-                        parameters, recovery timeouts and poll intervals,
-                        scripted-sequence calibration timings
-    paths.py            filesystem locations (relocatable except the game's save path)
-  io/                 everything that touches the game
-    capture.py          ScreenCapture (wf-recorder -> v4l2 -> OpenCV)
-    input.py            virtual gamepad, ACTIONS, menu navigation
-    memory.py           GameMemory: AOB scan, /proc reads, boss-HP vision
-    save.py             restoring the backup save over the game's live save
-  rl/                 the learning loop
-    environment.py      EldenRingEnv - the orchestrator
-    reward.py           reward shaping (pure, unit-tested)
-    features_extractor.py  CNN feature extractor
-    train.py            PPO setup, callbacks, checkpointing (entry point)
-  ui/                 dashboard.py (Rich), metrics.py (metric registry),
-                      episode_log.py (per-episode + per-step records), shared_stats.py
-
-tools/                live diagnostics + gamepad REPL (loose scripts, not collected by pytest)
-  _bootstrap.py         shared sys.path + display-env setup, imported first by each tool
-tests/                automated unit tests (pure logic, no game required)
-archive/              superseded and one-off code, kept for reference (not imported)
-  old/                  early flat-layout package versions
-  reverse_engineering/  one-off memory offset-discovery scripts (hardcoded addresses)
-  old_tools/            stale diagnostics not yet ported to the current API
-data/  models/  logs/  runtime artifacts and training outputs (gitignored)
-```
-
-If you want to extend it, there are two rules I try to keep the project honest with:
-
-- Only the two composition points, `rl/environment.py` and `rl/train.py`, import across
-  `io/`, `rl/` and `ui/`. Everything else stays in its own layer: `io/` knows nothing about
-  RL or rewards, and `ui/` knows nothing about `io/`.
-- Every tunable number lives in `config/`, no magic numbers in the logic. That includes the
-  timeouts and the timings of the scripted movement sequences, which I measured by hand
-  against the real game.
-
-## Caveats
-
-- **The memory offsets depend on the game version.** The `WorldChrMan` AOB signature and the
-  pointer-chain offsets in `eldenring_ai/config/offsets.py` were reverse-engineered against one
-  build, so a patch can break them and they'll need re-scanning.
-- **The static pointer is cached** in `data/world_chr_man_ptr.cache` so it isn't re-scanned on
-  every launch. Delete it after a game update.
-- **Reading another process's memory needs permission.** Depending on your
-  `kernel.yama.ptrace_scope` this may need elevated privileges.
-- **This drives your real game, mouse and keyboard focus.** Nothing here is sandboxed, so don't
-  run it on a save you care about. Back it up first.
-- **Training overwrites your live save.** After a crash or a victory it copies
-  `data/eldenring-save-backup.sl2` over the save at `paths.SAVE_LIVE`, `.bak` included. The copy
-  only ever goes in that direction, so the backup is the canonical state and you have to redo it
-  by hand whenever you change the character. Turn Steam Cloud off for Elden Ring as well, or it
-  can put the old save back underneath you.
-- It plays one specific build from one specific save state. Different gear, different levels or
-  a different starting grace will all need re-tuning.
+It is not portable as-is: it was built against my machine, and getting it running elsewhere means
+changing config, not just installing it. [`docs/RUNNING.md`](docs/RUNNING.md) has the
+requirements, the setup, every command, the layout of the code and the things that will bite you.
 
 ## License
 
