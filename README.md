@@ -18,7 +18,7 @@ slightly different character. That is what lets it train for days with nobody in
 
 ![The agent fighting Margit](docs/media/fight.gif)
 
-*[Full fight on YouTube](https://youtu.be/7N4M_GIXnCs)*
+*[28:53 of training video at 456k steps](https://youtu.be/7N4M_GIXnCs)*
 
 ## The three channels
 
