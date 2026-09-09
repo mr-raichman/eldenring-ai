@@ -125,7 +125,7 @@ to start from an identical character, or the thing being learned drifts undernea
 There is a live dashboard that redraws at the end of every episode, with the reward composition,
 the event rates and the PPO metrics.
 
-![The training dashboard](docs/media/dashboard.jpg)
+![The training dashboard](docs/media/dashboard-cropped.jpg)
 
 Every run also writes its own folder with the config that produced it, one row per episode, the
 per-step rewards and the reason for each, and a log of every recovery and abort.
