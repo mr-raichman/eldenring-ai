@@ -83,8 +83,29 @@ class ScreenCapture:
                 "  sudo modprobe v4l2loopback devices=1 card_label=capture exclusive_caps=1"
             )
 
+    def _kill_capture_recorders(self):
+        """Kill only the wf-recorder processes writing to the capture device.
+
+        Runs before launching our own, because a crash can leave the previous
+        instance alive holding the node. It cannot target a remembered PID: ours
+        does not exist yet, and a relaunched trainer would not remember the orphan
+        from the run before. Matching on the device is derived from the live
+        process list, so it is correct however the previous process died.
+
+        Deliberately not `pkill -x wf-recorder`: that also killed a wf-recorder
+        recording to a file, which is how footage gets captured while training.
+        """
+        listing = subprocess.run(
+            ["pgrep", "-a", "-x", "wf-recorder"], capture_output=True, text=True
+        ).stdout
+
+        for line in listing.splitlines():
+            pid, _, cmdline = line.partition(" ")
+            if self._device in cmdline:
+                subprocess.run(["kill", "-9", pid], capture_output=True)
+
     def _launch_wf_recorder(self):
-        subprocess.run(["pkill", "-9", "-x", "wf-recorder"], capture_output=True)
+        self._kill_capture_recorders()
         time.sleep(config.RECORDER_KILL_DELAY)
 
         env = os.environ.copy()
