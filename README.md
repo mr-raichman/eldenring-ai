@@ -110,11 +110,6 @@ own rate is therefore roughly 1 to 9 against trading blows.
 The reward is deliberately gentler than the game, currently 2 to 1, because an agent that
 respects the real rate learns to run away instead of fighting.
 
-There used to be a per-step penalty here too, to stop it standing still. It turned out to be
-paying most of the incentive to attack, since landing a hit switched the penalty off for the
-next 24 steps, and it scored long episodes worse than short ones, which means the reward was
-ranking survival as failure. It is gone.
-
 ## Why a win restarts the game
 
 Episodes run from the fog gate until it dies or wins, with no step limit. A win does not end
