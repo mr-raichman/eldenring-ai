@@ -18,9 +18,7 @@ slightly different character. That is what lets it train for days with nobody in
 
 ![The agent fighting Margit](docs/media/fight.gif)
 
-<!-- PENDENT: descomentar amb l'enllac real
-*[Full fight on YouTube](https://youtube.com/watch?v=PENDENT)*
--->
+*[Full fight on YouTube](https://youtu.be/7N4M_GIXnCs)*
 
 ## The three channels
 
