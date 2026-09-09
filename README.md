@@ -1,10 +1,20 @@
 # Elden Ring AI (G.A.L.E.)
 
-A reinforcement learning agent learning to beat **Margit, The Fell Omen** in **Elden Ring**,
-with a level one Vagabond and no shield, so the only way to win is to actually learn to dodge.
+A level one Vagabond with a sword, no shield and no summons, learning to fight **Margit, The
+Fell Omen** by watching the screen.
 
-It reads the screen, reads the game's memory and plays through a virtual gamepad. No mods, no
-API, nothing the game offers on purpose.
+Elden Ring has no API, so every channel between the agent and the game had to be built. Frames
+come out of the Wayland compositor through a video pipe. Button presses go in through a virtual
+gamepad, which is the easy part. State is the hard part: nothing in the game will tell you how
+much health you have, so the agent locates a base address by scanning the running process for a
+byte signature and walks a pointer chain from it. Margit's health is the one it never found a
+pointer for, so that one it reads off the pixels of his health bar.
+
+Then it has to survive being left alone. It walks itself from the grace to the fog gate, confirms
+it really is inside the arena before it learns anything from what it sees, waits out its own
+deaths, and when the game crashes it relaunches it through Steam, re-scans for the pointer and
+carries on. It restores the save after every victory so no two episodes ever start from a
+slightly different character. That is what lets it train for days with nobody in the room.
 
 <!-- PENDENT: descomentar quan hi hagi docs/media/fight.gif i l'enllac real
 ![The agent fighting Margit](docs/media/fight.gif)
@@ -12,11 +22,9 @@ API, nothing the game offers on purpose.
 *[Full fight on YouTube](https://youtube.com/watch?v=PENDENT)*
 -->
 
-## No API, no mods
+## The three channels
 
-Elden Ring gives you nothing to build an agent on. There is no observation to read, no action
-to send and no way to know whether you are even in the fight. Every channel between the agent
-and the game is something I had to build.
+Everything between the policy and the game, in order.
 
 ```
    wf-recorder -> v4l2loopback -> OpenCV        /proc/<pid>/mem
@@ -105,17 +113,15 @@ paying most of the incentive to attack, since landing a hit switched the penalty
 next 24 steps, and it scored long episodes worse than short ones, which means the reward was
 ranking survival as failure. It is gone.
 
-## Running unattended
+## Why a win restarts the game
 
-Episodes run from the fog gate until it dies or wins, with no step limit. The environment handles
-the entire loop by itself: it walks the character from the grace to the fog gate, confirms it
-really is inside the arena before starting, and on death waits out the respawn and walks back. If
-the game crashes it relaunches it through Steam, re-scans for the pointer and carries on.
+Episodes run from the fog gate until it dies or wins, with no step limit. A win does not end
+training, because the goal is mastering Margit rather than beating him once.
 
-A win does not end training, because the goal is mastering Margit rather than beating him once.
-It does leave him permanently dead in the save, so on a victory the environment kills the game,
-copies the backup save over the live one and relaunches. It recovers the same way after a crash,
-which keeps every episode starting from an identical character state instead of slowly drifting.
+That is a problem, because beating him leaves him permanently dead in the save. So on a victory
+the environment kills the game, copies the backup save over the live one and relaunches. It
+recovers the same way after a crash, and the reason is the same in both cases: every episode has
+to start from an identical character, or the thing being learned drifts underneath the agent.
 
 ## Watching it learn
 
