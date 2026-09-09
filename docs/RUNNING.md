@@ -1,7 +1,7 @@
 # Running it
 
-This is the honest part: I built this against my own machine and it is **not portable as-is**.
-Getting it running somewhere else means changing config, not just installing it.
+This was built against my own machine and it is **not portable as-is**. Getting it running
+somewhere else means changing config, not just installing it.
 
 ## Requirements
 

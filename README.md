@@ -4,10 +4,10 @@ A level one Vagabond with a sword, no shield and no summons, learning to fight *
 Fell Omen** by watching the screen.
 
 Elden Ring has no API, so every channel between the agent and the game had to be built. Frames
-come out of the Wayland compositor through a video pipe. Button presses go in through a virtual
-gamepad, which is the easy part. State is the hard part: nothing in the game will tell you how
-much health you have, so the agent locates a base address by scanning the running process for a
-byte signature and walks a pointer chain from it. Margit's health is the one it never found a
+come out of the Wayland compositor through a video pipe and button presses go in through a
+virtual gamepad. State is the problem: nothing in the game will tell you how much health you
+have, so the agent locates a base address by scanning the running process for a byte signature
+and walks a pointer chain from it. Margit's health is the one it never found a
 pointer for, so that one it reads off the pixels of his health bar.
 
 Then it has to survive being left alone. It walks itself from the grace to the fog gate, confirms
