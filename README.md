@@ -80,9 +80,11 @@ steps.
 I wanted the most basic build possible, so I picked Vagabond at level one and never levelled it
 up. It has to win by actually dodging, not by being overpowered.
 
-I started with a shield. Parrying and blocking gave good results, but they took the focus away
-from dodging, which is the interesting thing to learn, so I dropped it. Then I trained it on a
-two-handed sword by mistake and kept it, because it shrinks the action space for free.
+I started with a shield, and parrying and blocking gave good enough results that I never
+questioned it. Then I trained a whole run two-handed by mistake, which meant training without a
+shield at all, and that run was the more interesting one to watch. Only then did I work out why:
+the shield had been pulling the agent away from dodging, which is the thing I actually wanted it
+to learn. I kept the mistake. It also shrinks the action space for free.
 
 ### Micro episodes
 
