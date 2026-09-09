@@ -16,9 +16,9 @@ deaths, and when the game crashes it relaunches it through Steam, re-scans for t
 carries on. It restores the save after every victory so no two episodes ever start from a
 slightly different character. That is what lets it train for days with nobody in the room.
 
-<!-- PENDENT: descomentar quan hi hagi docs/media/fight.gif i l'enllac real
 ![The agent fighting Margit](docs/media/fight.gif)
 
+<!-- PENDENT: descomentar amb l'enllac real
 *[Full fight on YouTube](https://youtube.com/watch?v=PENDENT)*
 -->
 
@@ -125,9 +125,7 @@ to start from an identical character, or the thing being learned drifts undernea
 There is a live dashboard that redraws at the end of every episode, with the reward composition,
 the event rates and the PPO metrics.
 
-<!-- PENDENT: descomentar quan hi hagi docs/media/dashboard.png
-![The training dashboard](docs/media/dashboard.png)
--->
+![The training dashboard](docs/media/dashboard.jpg)
 
 Every run also writes its own folder with the config that produced it, one row per episode, the
 per-step rewards and the reason for each, and a log of every recovery and abort.
