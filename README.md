@@ -150,4 +150,4 @@ requirements, the setup, every command, the layout of the code and the things th
 
 GNU General Public License v3.0 or later, full text in [`LICENSE`](LICENSE).
 
-Copyright (C) 2026 Teo Raichman.
+Copyright (C) 2026 Teo Raichman Lagleyze.
